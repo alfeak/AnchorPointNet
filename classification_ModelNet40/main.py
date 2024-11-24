@@ -19,7 +19,7 @@ from data import ModelNet40
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import sklearn.metrics as metrics
 import numpy as np
-
+from torch.utils.tensorboard import SummaryWriter
 
 def parse_args():
     """Parameters"""
@@ -28,13 +28,13 @@ def parse_args():
                         help='path to save checkpoint (default: checkpoint)')
     parser.add_argument('--msg', type=str, help='message after checkpoint')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size in training')
-    parser.add_argument('--model', default='PointNet', help='model name [default: pointnet_cls]')
+    parser.add_argument('--model', default='pan', help='model name [default: pointnet_cls]')
     parser.add_argument('--epoch', default=300, type=int, help='number of epoch in training')
     parser.add_argument('--num_points', type=int, default=1024, help='Point Number')
     parser.add_argument('--learning_rate', default=0.1, type=float, help='learning rate in training')
-    parser.add_argument('--min_lr', default=0.005, type=float, help='min lr')
+    parser.add_argument('--min_lr', default=0.001, type=float, help='min lr')
     parser.add_argument('--weight_decay', type=float, default=2e-4, help='decay rate')
-    parser.add_argument('--seed', type=int, help='random seed')
+    parser.add_argument('--seed', type=int, default=5923, help='random seed')
     parser.add_argument('--workers', default=8, type=int, help='workers')
     return parser.parse_args()
 
@@ -72,6 +72,8 @@ def main():
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     screen_logger.addHandler(file_handler)
+
+    writer = SummaryWriter(log_dir=os.path.join(args.checkpoint,"logs"))
 
     def printf(str):
         screen_logger.info(str)
@@ -148,6 +150,18 @@ def main():
         best_test_loss = test_out["loss"] if (test_out["loss"] < best_test_loss) else best_test_loss
         best_train_loss = train_out["loss"] if (train_out["loss"] < best_train_loss) else best_train_loss
 
+        # TensorBoard Logging for Training
+        writer.add_scalar('Train/Loss', train_out["loss"], epoch)
+        writer.add_scalar('Train/Accuracy', train_out["acc"], epoch)
+        writer.add_scalar('Train/Accuracy_Avg', train_out["acc_avg"], epoch)
+        writer.add_scalar('Train/Best_Accuracy', best_train_acc, epoch)
+
+        # TensorBoard Logging for Validation
+        writer.add_scalar('Test/Loss', test_out["loss"], epoch)
+        writer.add_scalar('Test/Accuracy', test_out["acc"], epoch)
+        writer.add_scalar('Test/Accuracy_Avg', test_out["acc_avg"], epoch)
+        writer.add_scalar('Test/Best_Accuracy', best_test_acc, epoch)
+
         save_model(
             net, epoch, path=args.checkpoint, acc=test_out["acc"], is_best=is_best,
             best_test_acc=best_test_acc,  # best test accuracy
@@ -167,7 +181,7 @@ def main():
             f"Testing loss:{test_out['loss']} acc_avg:{test_out['acc_avg']}% "
             f"acc:{test_out['acc']}% time:{test_out['time']}s [best test acc: {best_test_acc}%] \n\n")
     logger.close()
-
+    writer.close()
     printf(f"++++++++" * 2 + "Final results" + "++++++++" * 2)
     printf(f"++  Last Train time: {train_out['time']} | Last Test time: {test_out['time']}  ++")
     printf(f"++  Best Train loss: {best_train_loss} | Best Test loss: {best_test_loss}  ++")
@@ -186,7 +200,7 @@ def train(net, trainloader, optimizer, criterion, device):
     time_cost = datetime.datetime.now()
     for batch_idx, (data, label) in enumerate(trainloader):
         data, label = data.to(device), label.to(device).squeeze()
-        data = data.permute(0, 2, 1)  # so, the input data shape is [batch, 3, 1024]
+        # data = data.permute(0, 2, 1)  # so, the input data shape is [batch, 3, 1024]
         optimizer.zero_grad()
         logits = net(data)
         loss = criterion(logits, label)
@@ -227,7 +241,7 @@ def validate(net, testloader, criterion, device):
     with torch.no_grad():
         for batch_idx, (data, label) in enumerate(testloader):
             data, label = data.to(device), label.to(device).squeeze()
-            data = data.permute(0, 2, 1)
+            # data = data.permute(0, 2, 1)
             logits = net(data)
             loss = criterion(logits, label)
             test_loss += loss.item()

@@ -20,9 +20,9 @@ class PointAnchorNet(nn.Module):
             PointConv(512,1024,knn,2,dilation),
             # PointFullAgreggation()
         )
-        self.classifier = nn.Linear(1024,40)
+        # self.classifier = nn.Linear(128,40)
         self.pool = nn.AdaptiveMaxPool1d(1)
-        # self.classifier = nn.Linear(1024, 40)
+        self.classifier = nn.Linear(1024, 40)
         # self.classifier = nn.Sequential(
         #     nn.Linear(1024, 512),
         #     nn.BatchNorm1d(512),
