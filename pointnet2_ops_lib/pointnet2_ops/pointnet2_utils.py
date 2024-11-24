@@ -20,7 +20,7 @@ except ImportError:
     )
     _ext_headers = glob.glob(osp.join(_ext_src_root, "include", "*"))
 
-    os.environ["TORCH_CUDA_ARCH_LIST"] = "8.7"
+    os.environ["TORCH_CUDA_ARCH_LIST"] = "8.6"
     _ext = load(
         "_ext",
         sources=_ext_sources,
