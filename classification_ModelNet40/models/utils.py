@@ -60,28 +60,58 @@ def knn_point(nsample, xyz, new_xyz):
         group_idx: grouped points index, [B, S, nsample]
     """
     sqrdists = square_distance(new_xyz, xyz)
-    _, group_idx = torch.topk(sqrdists, nsample, dim=-1, largest=False, sorted=True)
+    _, group_idx = torch.topk(sqrdists, nsample, dim=-1, largest=False, sorted=False)
     return group_idx
 
+def sort_sample(points, stride):
+    """
+    Sort points by distance and sample using stride.
+
+    Args:
+        points (torch.Tensor): Tensor of shape [B, D, N], where
+            B is the batch size,
+            D is the dimensionality of points,
+            N is the number of points.
+        stride (int): Stride for sampling.
+
+    Returns:
+        torch.Tensor: Sorted and sampled points of shape [B, D, M],
+                      where M = N // stride.
+    """
+    B, D, N = points.shape
+    
+    # Compute distance along the feature dimension (D)
+    distance = torch.norm(points, dim=1)  # Shape: [B, N]
+    
+    # Sort distances and get the sorting indices
+    sorted_indices = torch.argsort(distance, dim=-1)  # Shape: [B, N]
+    idx = sorted_indices[:, ::stride]  # Shape: [B, M]
+    
+    return idx
+
 class PointMaxPool(nn.Module):
-    def __init__(self,knn=1,stride=1,dilation=1):
+    def __init__(self,in_channel,knn=1,stride=1,dilation=1):
         super(PointMaxPool,self).__init__()
         self.knn = knn
         self.stride = stride
         self.dilation = dilation
         self.pool = nn.MaxPool2d((1,self.knn))
+        self.bn = nn.BatchNorm2d(in_channel)
 
     def forward(self,x):
         points,xyz = x
+        # fps_idx = sort_sample(points,self.stride)
         points = points.permute(0,2,1)
         B, N, C = xyz.shape
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points, fps_idx)
 
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points, idx) - sampled_points.unsqueeze(-2).repeat(1,1,self.knn,1)  # [B, npoint, nsample, C]
-        new_points = self.pool(grouped_points.permute(0,3,1,2)).squeeze(-1) + sampled_points.permute(0,2,1)  # [B, C, npoint, nsample]
+        grouped_points = self.bn(grouped_points.permute(0,3,1,2)) + sampled_points.permute(0,2,1).unsqueeze(-1).repeat(1,1,1,self.knn)
+        new_points = self.pool(grouped_points).squeeze(-1)  # [B, C, npoint, nsample]
         return (new_points, sampled_xyz)
 
 class PointFullAgreggation(nn.Module):
@@ -106,6 +136,8 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
+
+        self.bn = nn.BatchNorm2d(in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm2d(out_channel),
@@ -114,8 +146,8 @@ class PointConv(nn.Module):
             nn.BatchNorm2d(out_channel),
             nn.MaxPool2d((1,self.knn))
         )
-        self.affine_alpha = nn.Parameter(torch.ones([1,1,1,in_channel]))
-        self.affine_beta = nn.Parameter(torch.zeros([1, 1, 1, in_channel]))
+
+        self.bn1 = nn.BatchNorm2d(out_channel)
         self.conv1 =  nn.Sequential(
             nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm2d(out_channel),
@@ -131,27 +163,27 @@ class PointConv(nn.Module):
                 nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
                 nn.BatchNorm1d(out_channel),
         )
-        # self.pool = nn.MaxPool2d((1,self.knn))
 
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape
         xyz = xyz.contiguous() 
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        # fps_idx = sort_sample(points,self.stride)
+
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
         
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points.permute(0,2,1), idx) - sampled_points.permute(0,2,1).unsqueeze(-2).repeat(1,1,self.knn,1)
-        std = torch.std((grouped_points).reshape(B,-1),dim=-1,keepdim=True).unsqueeze(dim=-1).unsqueeze(dim=-1)
-        grouped_points = (grouped_points)/(std + 1e-5)
-        grouped_points = self.affine_alpha*grouped_points + self.affine_beta
-        grouped_points = self.conv(grouped_points.permute(0,3,1,2)).squeeze(-1)
+        grouped_points = self.bn(grouped_points.permute(0,3,1,2)) + sampled_points.unsqueeze(-1).repeat(1,1,1,self.knn)
+        grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
         
         idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(new_points.permute(0,2,1), idx) - new_points.permute(0,2,1).unsqueeze(-2).repeat(1,1,self.knn,1)
-        grouped_points = self.conv1(grouped_points.permute(0,3,1,2)).squeeze(-1)
+        grouped_points = self.bn1(grouped_points.permute(0,3,1,2)) + new_points.unsqueeze(-1).repeat(1,1,1,self.knn)
+        grouped_points = self.conv1(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + new_points)
         
         return (new_points,sampled_xyz)

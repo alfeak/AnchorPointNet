@@ -13,7 +13,7 @@ class PointAnchorNet(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.convlayer = nn.Sequential(
-            # PointMaxPool(knn,2,dilation),
+            PointMaxPool(64,knn,2,dilation),
             PointConv(64,128,knn,2,dilation),
             PointConv(128,256,knn,2,dilation),
             PointConv(256,512,knn,2,dilation),
@@ -42,8 +42,10 @@ class PointAnchorNet(nn.Module):
         return points
     
 if __name__ == '__main__':
-    data = torch.rand(2, 1024, 3).cuda()
+    # data = torch.rand(2, 1024, 3).cuda()
+    data = torch.rand(2, 1024, 3)
     print("===> testing pointMLP ...")
-    model = PointAnchorNet().cuda()
+    # model = PointAnchorNet().cuda()
+    model = PointAnchorNet()
     out = model(data)
     print(out.shape)
