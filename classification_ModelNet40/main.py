@@ -73,7 +73,7 @@ def main():
     file_handler.setFormatter(formatter)
     screen_logger.addHandler(file_handler)
 
-    writer = SummaryWriter(log_dir=os.path.join(args.checkpoint,"logs"))
+    writer = SummaryWriter(log_dir=os.path.join("/mnt/data/tensorboards/summary"))
 
     def printf(str):
         screen_logger.info(str)
