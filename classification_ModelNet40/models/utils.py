@@ -112,6 +112,24 @@ class PointMaxPool(nn.Module):
         new_points = self.pool(self.bn(index_points(points, idx).permute(0,3,1,2))).squeeze(-1)
         return (new_points, sampled_xyz)
 
+class PointBatchNorm(nn.Module):
+    def __init__(self,in_channel,eps=1e-5):
+        super(PointBatchNorm,self).__init__()
+        self.in_channel = in_channel
+        self.affine_alpha = nn.Parameter(torch.ones([1,in_channel,1,1]))
+        self.affine_beta = nn.Parameter(torch.zeros([1,in_channel,1,1]))
+        self.eps = eps
+    
+    def forward(self,points):
+        B,D,N,K = points.shape
+        anchor_points = points[:,:,:,0].unsqueeze(-1).repeat(1,1,1,K)
+        var = torch.var((points-anchor_points).reshape(B,-1),dim=-1,keepdim=True).unsqueeze(dim=-1).unsqueeze(dim=-1)
+        std = torch.sqrt(var+self.eps)
+        points = (points-anchor_points)/std
+        points = self.affine_alpha*points + self.affine_beta
+        
+        return points
+
 class PointFullAgreggation(nn.Module):
     def __init__(self):
         super(PointFullAgreggation,self).__init__()
@@ -135,23 +153,20 @@ class PointConv(nn.Module):
         self.in_channel = in_channel
         self.out_channel = out_channel
 
-        self.bn = nn.BatchNorm2d(in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
-            nn.BatchNorm2d(out_channel),
+            PointBatchNorm(out_channel),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            nn.BatchNorm2d(out_channel),
+            PointBatchNorm(out_channel),
             nn.MaxPool2d((1,self.knn))
         )
-
-        self.bn1 = nn.BatchNorm2d(out_channel)
         self.conv1 =  nn.Sequential(
             nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            nn.BatchNorm2d(out_channel),
+            PointBatchNorm(out_channel),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            nn.BatchNorm2d(out_channel),
+            PointBatchNorm(out_channel),
             nn.MaxPool2d((1,self.knn))
         )
         if in_channel == out_channel:
@@ -173,12 +188,12 @@ class PointConv(nn.Module):
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
         
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = self.bn(index_points(points.permute(0,2,1), idx).permute(0,3,1,2))
+        grouped_points = index_points(points.permute(0,2,1), idx).permute(0,3,1,2)
         grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
         
         idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = self.bn1(index_points(new_points.permute(0,2,1), idx).permute(0,3,1,2))
+        grouped_points = index_points(new_points.permute(0,2,1), idx).permute(0,3,1,2)
         grouped_points = self.conv1(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + new_points)
         
