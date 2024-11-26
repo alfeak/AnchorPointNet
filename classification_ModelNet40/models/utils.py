@@ -109,9 +109,7 @@ class PointMaxPool(nn.Module):
         sampled_points = index_points(points, fps_idx)
 
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(points, idx) - sampled_points.unsqueeze(-2).repeat(1,1,self.knn,1)  # [B, npoint, nsample, C]
-        grouped_points = self.bn(grouped_points.permute(0,3,1,2)) + sampled_points.permute(0,2,1).unsqueeze(-1).repeat(1,1,1,self.knn)
-        new_points = self.pool(grouped_points).squeeze(-1)  # [B, C, npoint, nsample]
+        new_points = self.pool(self.bn(index_points(points, idx).permute(0,3,1,2))).squeeze(-1)
         return (new_points, sampled_xyz)
 
 class PointFullAgreggation(nn.Module):
@@ -175,14 +173,12 @@ class PointConv(nn.Module):
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
         
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(points.permute(0,2,1), idx) - sampled_points.permute(0,2,1).unsqueeze(-2).repeat(1,1,self.knn,1)
-        grouped_points = self.bn(grouped_points.permute(0,3,1,2)) + sampled_points.unsqueeze(-1).repeat(1,1,1,self.knn)
+        grouped_points = self.bn(index_points(points.permute(0,2,1), idx).permute(0,3,1,2))
         grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
         
         idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(new_points.permute(0,2,1), idx) - new_points.permute(0,2,1).unsqueeze(-2).repeat(1,1,self.knn,1)
-        grouped_points = self.bn1(grouped_points.permute(0,3,1,2)) + new_points.unsqueeze(-1).repeat(1,1,1,self.knn)
+        grouped_points = self.bn1(index_points(new_points.permute(0,2,1), idx).permute(0,3,1,2))
         grouped_points = self.conv1(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + new_points)
         
