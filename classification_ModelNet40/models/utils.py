@@ -145,19 +145,25 @@ class PointFullAgreggation(nn.Module):
         return (new_points, xyz)
 
 class PointConv(nn.Module):
-    def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1,activate=True):
+    def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
         self.knn = knn
         self.stride = stride
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.activate = activate
         self.bn = nn.BatchNorm2d(in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm2d(out_channel),
             nn.MaxPool2d((1,self.knn)),
+        )
+        if in_channel == out_channel:
+            self.identity = nn.Sequential()
+        else:
+            self.identity = nn.Sequential(
+                nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
+                nn.BatchNorm1d(out_channel),
         )
 
     def forward(self,x):
@@ -174,8 +180,7 @@ class PointConv(nn.Module):
         grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
         new_points = self.bn(grouped_points) + sampled_points.unsqueeze(-1).repeat(1,1,1,self.knn)
         new_points = self.conv(new_points).squeeze(-1)
-        if self.activate:
-            new_points = F.relu(new_points)
+        new_points = F.relu(new_points + self.identity(sampled_points))
         return (new_points,sampled_xyz)
 
 class PointResConv(nn.Module):
