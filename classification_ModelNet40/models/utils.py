@@ -89,61 +89,6 @@ def sort_sample(points, stride):
     
     return idx
 
-class PointMaxPool(nn.Module):
-    def __init__(self,in_channel,knn=1,stride=1,dilation=1):
-        super(PointMaxPool,self).__init__()
-        self.knn = knn
-        self.stride = stride
-        self.dilation = dilation
-        self.pool = nn.MaxPool2d((1,self.knn))
-        self.bn = nn.BatchNorm2d(in_channel)
-
-    def forward(self,x):
-        points,xyz = x
-        # fps_idx = sort_sample(points,self.stride)
-        points = points.permute(0,2,1)
-        B, N, C = xyz.shape
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        
-        sampled_xyz = index_points(xyz, fps_idx)
-        sampled_points = index_points(points, fps_idx)
-
-        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        new_points = self.pool(self.bn(index_points(points, idx).permute(0,3,1,2))).squeeze(-1)
-        return (new_points, sampled_xyz)
-
-class PointBatchNorm(nn.Module):
-    def __init__(self,in_channel,eps=1e-5):
-        super(PointBatchNorm,self).__init__()
-        self.in_channel = in_channel
-        self.affine_alpha = nn.Parameter(torch.ones([1,in_channel,1,1]))
-        self.affine_beta = nn.Parameter(torch.zeros([1,in_channel,1,1]))
-        self.eps = eps
-    
-    def forward(self,points):
-        B,D,N,K = points.shape
-        anchor_points = points[:,:,:,0].unsqueeze(-1).repeat(1,1,1,K)
-        var = torch.var((points-anchor_points).reshape(B,-1),dim=-1,keepdim=True).unsqueeze(dim=-1).unsqueeze(dim=-1)
-        std = torch.sqrt(var+self.eps)
-        points = (points-anchor_points)/std
-        points = self.affine_alpha*points + self.affine_beta
-        
-        return points
-
-class PointFullAgreggation(nn.Module):
-    def __init__(self):
-        super(PointFullAgreggation,self).__init__()
-        self.pool = nn.AdaptiveMaxPool1d(1)
-    def forward(self,x):
-        points,xyz = x
-        points = points.permute(0,2,1)
-        B, N, C = xyz.shape
-        idx = knn_point(N, xyz, xyz)
-        grouped_points = index_points(points, idx).permute(0,3,1,2)  # [B, C, N, nsample]
-        new_points = F.max_pool2d(grouped_points, kernel_size=(1,N)).squeeze(-1)  # [B, C, N]
-        new_points = self.pool(new_points).squeeze(-1)  # [B, C]
-        return (new_points, xyz)
-
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -159,7 +104,23 @@ class PointConv(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d((1,self.knn)),
         )
+        self.bn1 = nn.BatchNorm2d(2)
         self.conv1 = nn.Sequential(
+            nn.Conv2d(2,1,kernel_size=1,bias=False),
+            nn.MaxPool2d((1,self.knn)),
+        )
+        self.sigmoid = nn.Sigmoid()
+        if in_channel == out_channel:
+            self.identity = nn.Sequential()
+        else:
+            self.identity = nn.Sequential(
+                nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
+                nn.BatchNorm1d(out_channel),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+            nn.BatchNorm1d(out_channel),
+            nn.ReLU(inplace=True),
             nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm1d(out_channel),
         )
@@ -175,41 +136,21 @@ class PointConv(nn.Module):
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
         
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
-        new_points = self.bn(grouped_points) + sampled_points.unsqueeze(-1).repeat(1,1,1,self.knn)
+        grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2) 
+        new_points = self.bn(grouped_points - grouped_points[:,:,:,0].unsqueeze(-1)) + grouped_points[:,:,:,0].unsqueeze(-1)
         new_points = self.conv(new_points).squeeze(-1)
-        new_points = F.relu(self.conv1(new_points) + new_points)
-        return (new_points,sampled_xyz)
-
-class PointResConv(nn.Module):
-    def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
-        super(PointResConv,self).__init__()
-        self.knn = knn
-        self.stride = stride
-        self.dilation = dilation
-        self.in_channel = in_channel
-        self.out_channel = out_channel
-        self.conv = nn.Sequential(
-            PointConv(in_channel,out_channel,knn,stride,dilation),
-            PointConv(out_channel,out_channel,knn,1,dilation,False)
-        )
-        self.conv1 = nn.Sequential(
-            PointConv(out_channel,out_channel,knn,1,dilation),
-            PointConv(out_channel,out_channel,knn,1,dilation,False)
-        )
-        
-        if in_channel == out_channel:
-            self.identity = nn.Sequential()
-        else:
-            self.identity = PointConv(in_channel,out_channel,1,stride,dilation,False)
-            
-    def forward(self,x):
-        points,sampled_xyz = self.conv(x)
-        resi,_ = self.identity(x)
-        points = F.relu(points + resi)
-        
-        new_points,_ = self.conv1((points,sampled_xyz))
-        new_points = F.relu(new_points + points)
+                
+        idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
+        grouped_points = index_points(new_points.permute(0,2,1),idx).permute(0,3,1,2) 
+        max_pooled = torch.max(grouped_points, dim=1, keepdim=True)[0]  # [b, 1, n, k]
+        avg_pooled = torch.mean(grouped_points, dim=1, keepdim=True)    # [b, 1, n, k]
+        spatial_attention = torch.cat([max_pooled, avg_pooled], dim=1)  # [b, 2, n, k]
+        spatial_attention = self.bn1(spatial_attention - spatial_attention[:,:,:,0].unsqueeze(-1)) + spatial_attention[:,:,:,0].unsqueeze(-1)
+        spatial_attention = self.conv1(spatial_attention)
+        spatial_attention = self.sigmoid(spatial_attention).squeeze(-1)
+        new_points = new_points*spatial_attention
+        new_points = F.relu(new_points + self.identity(sampled_points))
+        new_points = F.relu(new_points + self.conv2(new_points))
         return (new_points,sampled_xyz)
 
 if __name__ == "__main__":
