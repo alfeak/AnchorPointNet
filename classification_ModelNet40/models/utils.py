@@ -145,37 +145,27 @@ class PointFullAgreggation(nn.Module):
         return (new_points, xyz)
 
 class PointConv(nn.Module):
-    def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
+    def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1,activate=True):
         super(PointConv,self).__init__()
         self.knn = knn
         self.stride = stride
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
-
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
-            PointBatchNorm(out_channel),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            PointBatchNorm(out_channel),
-            nn.MaxPool2d((1,self.knn))
+            nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
         )
-        self.conv1 =  nn.Sequential(
-            nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            PointBatchNorm(out_channel),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            PointBatchNorm(out_channel),
-            nn.MaxPool2d((1,self.knn))
-        )
-        if in_channel == out_channel:
-            self.identity = nn.Sequential()
+        self.activate = activate
+        if knn == 1:
+            self.conv_post = nn.Sequential(
+                nn.BatchNorm2d(out_channel),
+                nn.MaxPool2d((1,self.knn)),
+            )
         else:
-            self.identity = nn.Sequential(
-                nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
-                nn.BatchNorm1d(out_channel),
-        )
+            self.conv_post = nn.Sequential(
+                PointBatchNorm(out_channel),
+                nn.MaxPool2d((1,self.knn)),
+            )
 
     def forward(self,x):
         points,xyz = x
@@ -187,18 +177,45 @@ class PointConv(nn.Module):
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
         
+        points = self.conv(points)
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(points.permute(0,2,1), idx).permute(0,3,1,2)
-        grouped_points = self.conv(grouped_points).squeeze(-1)
-        new_points = F.relu(grouped_points + self.identity(sampled_points))
-        
-        idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(new_points.permute(0,2,1), idx).permute(0,3,1,2)
-        grouped_points = self.conv1(grouped_points).squeeze(-1)
-        new_points = F.relu(grouped_points + new_points)
-        
+        grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
+        new_points = self.conv_post(grouped_points).squeeze(-1)
+        if self.activate:
+            new_points = F.relu(new_points)
         return (new_points,sampled_xyz)
         # return new_points
+
+class PointResConv(nn.Module):
+    def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
+        super(PointResConv,self).__init__()
+        self.knn = knn
+        self.stride = stride
+        self.dilation = dilation
+        self.in_channel = in_channel
+        self.out_channel = out_channel
+        self.conv = nn.Sequential(
+            PointConv(in_channel,out_channel,knn,stride,dilation),
+            PointConv(out_channel,out_channel,knn,1,dilation,False)
+        )
+        self.conv1 = nn.Sequential(
+            PointConv(out_channel,out_channel,knn,1,dilation),
+            PointConv(out_channel,out_channel,knn,1,dilation,False)
+        )
+        
+        if in_channel == out_channel:
+            self.identity = nn.Sequential()
+        else:
+            self.identity = PointConv(in_channel,out_channel,1,stride,dilation,False)
+            
+    def forward(self,x):
+        points,sampled_xyz = self.conv(x)
+        resi,_ = self.identity(x)
+        points = F.relu(points + resi)
+        
+        new_points,_ = self.conv1((points,sampled_xyz))
+        new_points = F.relu(new_points + points)
+        return (new_points,sampled_xyz)
 
 if __name__ == "__main__":
     pass
