@@ -152,20 +152,13 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.conv = nn.Sequential(
-            nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
-        )
         self.activate = activate
-        if knn == 1:
-            self.conv_post = nn.Sequential(
-                nn.BatchNorm2d(out_channel),
-                nn.MaxPool2d((1,self.knn)),
-            )
-        else:
-            self.conv_post = nn.Sequential(
-                PointBatchNorm(out_channel),
-                nn.MaxPool2d((1,self.knn)),
-            )
+        self.bn = nn.BatchNorm2d(in_channel)
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
+            nn.BatchNorm2d(out_channel),
+            nn.MaxPool2d((1,self.knn)),
+        )
 
     def forward(self,x):
         points,xyz = x
@@ -177,14 +170,13 @@ class PointConv(nn.Module):
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
         
-        points = self.conv(points)
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
-        new_points = self.conv_post(grouped_points).squeeze(-1)
+        new_points = self.bn(grouped_points) + sampled_points.unsqueeze(-1).repeat(1,1,1,self.knn)
+        new_points = self.conv(new_points).squeeze(-1)
         if self.activate:
             new_points = F.relu(new_points)
         return (new_points,sampled_xyz)
-        # return new_points
 
 class PointResConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
