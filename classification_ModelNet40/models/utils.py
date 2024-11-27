@@ -63,32 +63,30 @@ def knn_point(nsample, xyz, new_xyz):
     _, group_idx = torch.topk(sqrdists, nsample, dim=-1, largest=False, sorted=False)
     return group_idx
 
-def sort_sample(points, stride):
-    """
-    Sort points by distance and sample using stride.
+class PointMaxPool(nn.Module):
+    def __init__(self,in_channel,knn=1,stride=1,dilation=1):
+        super(PointMaxPool,self).__init__()
+        self.knn = knn
+        self.stride = stride
+        self.dilation = dilation
+        self.bn = nn.BatchNorm2d(in_channel)
+        self.pool = nn.MaxPool2d((1,self.knn))
 
-    Args:
-        points (torch.Tensor): Tensor of shape [B, D, N], where
-            B is the batch size,
-            D is the dimensionality of points,
-            N is the number of points.
-        stride (int): Stride for sampling.
+    def forward(self,x):
+        points,xyz = x
+        points = points.permute(0,2,1)
+        B, N, C = xyz.shape
+        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        
+        sampled_xyz = index_points(xyz, fps_idx)
+        sampled_points = index_points(points, fps_idx).permute(0,2,1)
 
-    Returns:
-        torch.Tensor: Sorted and sampled points of shape [B, D, M],
-                      where M = N // stride.
-    """
-    B, D, N = points.shape
-    
-    # Compute distance along the feature dimension (D)
-    distance = torch.norm(points, dim=1)  # Shape: [B, N]
-    
-    # Sort distances and get the sorting indices
-    sorted_indices = torch.argsort(distance, dim=-1)  # Shape: [B, N]
-    idx = sorted_indices[:, ::stride]  # Shape: [B, M]
-    
-    return idx
-
+        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
+        grouped_points = index_points(points,idx).permute(0,3,1,2)
+        new_points = self.bn(grouped_points - grouped_points[:,:,:,0].unsqueeze(-1)) + grouped_points[:,:,:,0].unsqueeze(-1)
+        new_points = self.pool(new_points).squeeze(-1)
+        return (new_points, sampled_xyz)
+  
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -130,7 +128,6 @@ class PointConv(nn.Module):
         B, N, C = xyz.shape
         xyz = xyz.contiguous() 
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        # fps_idx = sort_sample(points,self.stride)
 
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
