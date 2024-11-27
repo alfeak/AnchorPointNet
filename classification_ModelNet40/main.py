@@ -36,6 +36,8 @@ def parse_args():
     parser.add_argument('--weight_decay', type=float, default=2e-4, help='decay rate')
     parser.add_argument('--seed', type=int, default=5923, help='random seed')
     parser.add_argument('--workers', default=8, type=int, help='workers')
+    parser.add_argument('--knn', default=24, type=int, help='knn')
+    parser.add_argument('--dilation', default=1, type=int, help='dilation')
     return parser.parse_args()
 
 
@@ -82,7 +84,7 @@ def main():
     # Model
     printf(f"args: {args}")
     printf('==> Building model..')
-    net = models.__dict__[args.model]()
+    net = models.__dict__[args.model](knn=args.knn,dilation=args.dilation)
     criterion = cal_loss
     net = net.to(device)
     # criterion = criterion.to(device)

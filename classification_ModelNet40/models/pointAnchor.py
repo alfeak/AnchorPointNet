@@ -3,10 +3,10 @@ import torch.nn as nn
 from .utils import PointConv
 
 class PointAnchorNet(nn.Module):
-    def __init__(self):
+    def __init__(self,knn=24,dilation=1):
         super(PointAnchorNet, self).__init__()
-        knn = 24
-        dilation = 1
+        knn = knn
+        dilation = dilation
         self.conv = nn.Sequential(
             nn.Conv1d(3, 64, kernel_size=1, bias=False),
             nn.BatchNorm1d(64),
