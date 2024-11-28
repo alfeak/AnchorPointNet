@@ -122,21 +122,19 @@ class PointConv(nn.Module):
         
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2) 
-        grouped_points = self.bn(grouped_points - grouped_points[:,:,:,0].unsqueeze(-1)) + grouped_points[:,:,:,0].unsqueeze(-1)
+        grouped_points = self.bn(grouped_points) + grouped_points[:,:,:,0].unsqueeze(-1)
         new_points = self.conv(grouped_points).squeeze(-1)
         
-                
-#         idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
-#         grouped_points = index_points(new_points.permute(0,2,1),idx).permute(0,3,1,2) 
-#         max_pooled = torch.max(grouped_points, dim=1, keepdim=True)[0]  # [b, 1, n, k]
-#         avg_pooled = torch.mean(grouped_points, dim=1, keepdim=True)    # [b, 1, n, k]
-#         spatial_attention = torch.cat([max_pooled, avg_pooled], dim=1)  # [b, 2, n, k]
-#         # spatial_attention = self.bn1(spatial_attention - spatial_attention[:,:,:,0].unsqueeze(-1)) + spatial_attention[:,:,:,0].unsqueeze(-1)
-#         spatial_attention = self.conv1(spatial_attention)
-#         spatial_attention = self.sigmoid(spatial_attention).squeeze(-1)
-#         new_points = new_points*spatial_attention
+        idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
+        grouped_points = index_points(new_points.permute(0,2,1),idx).permute(0,3,1,2) 
+        max_pooled = torch.max(grouped_points, dim=1, keepdim=True)[0]  # [b, 1, n, k]
+        avg_pooled = torch.mean(grouped_points, dim=1, keepdim=True)    # [b, 1, n, k]
+        spatial_attention = torch.cat([max_pooled, avg_pooled], dim=1)  # [b, 2, n, k]
+        spatial_attention = self.bn1(spatial_attention) + spatial_attention[:,:,:,0].unsqueeze(-1)
+        spatial_attention = self.conv1(spatial_attention)
+        spatial_attention = self.sigmoid(spatial_attention).squeeze(-1)
+        new_points = new_points*spatial_attention
         
-#         new_points = new_points + identity
         return (new_points,sampled_xyz)
 
 if __name__ == "__main__":
