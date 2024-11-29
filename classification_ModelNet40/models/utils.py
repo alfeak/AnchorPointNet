@@ -110,7 +110,7 @@ class PointMaxPool(nn.Module):
 
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points,idx).permute(0,3,1,2)
-        new_points = self.bn(grouped_points) + grouped_points[:,:,:,0].unsqueeze(-1)
+        new_points = self.bn(grouped_points)# + grouped_points[:,:,:,0].unsqueeze(-1)
         new_points = self.pool(new_points).squeeze(-1)
         return (new_points, sampled_xyz)
   
