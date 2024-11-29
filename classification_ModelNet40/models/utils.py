@@ -138,14 +138,12 @@ class PointConv(nn.Module):
               nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
               nn.BatchNorm1d(out_channel),
         )
-        self.bn1 = nn.BatchNorm2d(out_channel)
         self.conv1 = nn.Sequential(
-            nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            nn.BatchNorm2d(out_channel),
+            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+            nn.BatchNorm1d(out_channel),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-            nn.BatchNorm2d(out_channel),
-            nn.MaxPool2d((1,self.knn)),
+            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+            nn.BatchNorm1d(out_channel),
         )
     def forward(self,x):
         points,xyz = x
@@ -162,12 +160,7 @@ class PointConv(nn.Module):
         grouped_points = self.bn(grouped_points) + grouped_points[:,:,:,0].unsqueeze(-1)
         grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
-
-        idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(new_points.permute(0,2,1),idx).permute(0,3,1,2) 
-        grouped_points = self.bn1(grouped_points) + grouped_points[:,:,:,0].unsqueeze(-1)
-        grouped_points = self.conv1(grouped_points).squeeze(-1)
-        new_points = F.relu(grouped_points + new_points)
+        new_points = F.relu(self.conv1(new_points) + new_points)
 
         return (new_points,sampled_xyz)
 
