@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from utils import PointConv
+from .utils import PointConv
 
 class PointAnchorNet(nn.Module):
     def __init__(self,knn=24,dilation=1):
