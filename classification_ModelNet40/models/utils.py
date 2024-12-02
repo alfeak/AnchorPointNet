@@ -88,32 +88,7 @@ def sort_sample(points, stride):
     idx = sorted_indices[:, ::stride]  # Shape: [B, M]
     
     return idx
-    
-class PointMaxPool(nn.Module):
-    def __init__(self,in_channel,knn=1,stride=1,dilation=1):
-        super(PointMaxPool,self).__init__()
-        self.knn = knn
-        self.stride = stride
-        self.dilation = dilation
-        self.bn = nn.BatchNorm2d(in_channel)
-        self.pool = nn.MaxPool2d((1,self.knn))
-
-    def forward(self,x):
-        points,xyz = x
-        points = points.permute(0,2,1)
-        B, N, C = xyz.shape
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        # fps_idx = sort_sample(xyz,self.stride)
-
-        sampled_xyz = index_points(xyz, fps_idx)
-        sampled_points = index_points(points, fps_idx).permute(0,2,1)
-
-        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(points,idx).permute(0,3,1,2)
-        new_points = self.bn(grouped_points)# + grouped_points[:,:,:,0].unsqueeze(-1)
-        new_points = self.pool(new_points).squeeze(-1)
-        return (new_points, sampled_xyz)
-  
+      
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -125,13 +100,13 @@ class PointConv(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm1d(out_channel),
-            nn.ReLU(inplace=True),
         )
+        self.bn = nn.BatchNorm2d(out_channel)
         self.conv1 = nn.Sequential(
             nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm1d(out_channel),
-            nn.ReLU(inplace=True),
         )
+        self.bn1 = nn.BatchNorm2d(out_channel)
         self.pool = nn.MaxPool2d((1,knn))
         self.identity = nn.Sequential(
             nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
@@ -154,13 +129,15 @@ class PointConv(nn.Module):
         
         points = self.conv(points)
         idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2) 
+        grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
+        grouped_points = self.bn(grouped_points) + grouped_points[:,:,:,0].unsqueeze(-1)
         grouped_points = self.pool(grouped_points).squeeze(-1)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
 
         points = self.conv1(new_points)
         idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
+        grouped_points = self.bn1(grouped_points) + grouped_points[:,:,:,0].unsqueeze(-1)
         grouped_points = self.pool(grouped_points).squeeze(-1)
         new_points = F.relu(new_points + grouped_points + self.identity1(new_points))
         return (new_points,sampled_xyz)
