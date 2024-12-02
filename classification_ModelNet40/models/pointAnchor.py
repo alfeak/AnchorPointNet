@@ -16,13 +16,13 @@ class PointAnchorNet(nn.Module):
             # PointConv(3,64,knn,2,dilation),
             # PointMaxPool(64,knn,2,dilation),
             PointConv(64,128,knn,2,dilation),
-            PointConv(128,128,knn,1,dilation),
+            # PointConv(128,128,knn,1,dilation),
             PointConv(128,256,knn,2,dilation),
-            PointConv(256,256,knn,1,dilation),
+            # PointConv(256,256,knn,1,dilation),
             PointConv(256,512,knn,2,dilation),
-            PointConv(512,512,knn,1,dilation),
+            # PointConv(512,512,knn,1,dilation),
             PointConv(512,1024,knn,2,dilation),
-            PointConv(1024,1024,knn,1,dilation),
+            # PointConv(1024,1024,knn,1,dilation),
         )
         self.pool = nn.AdaptiveMaxPool1d(1)
         self.classifier = nn.Linear(1024, 40)
