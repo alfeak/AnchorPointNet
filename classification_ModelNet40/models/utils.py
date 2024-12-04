@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from time import time
 import numpy as np
-# from pointnet2_ops import pointnet2_utils
+from pointnet2_ops import pointnet2_utils
 
 def square_distance(src, dst):
     """
@@ -115,8 +115,8 @@ class PointConv(nn.Module):
         points,xyz = x
         B, N, C = xyz.shape
         xyz = xyz.contiguous() 
-        # fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        fps_idx = sort_sample(xyz,self.stride)
+        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        # fps_idx = sort_sample(xyz,self.stride)
 
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
