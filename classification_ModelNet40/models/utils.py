@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from time import time
 import numpy as np
-from pointnet2_ops import pointnet2_utils
+# from pointnet2_ops import pointnet2_utils
 
 def square_distance(src, dst):
     """
@@ -97,25 +97,17 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.conv = nn.Sequential(
-            nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
-        )
+        self.conv = nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False)
         self.bn = nn.BatchNorm2d(out_channel)
+        self.conv1 = nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False)
         self.bn1 = nn.BatchNorm2d(out_channel)
-
-        self.conv1 = nn.Sequential(
-            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
-        )
-        self.bn2 = nn.BatchNorm2d(out_channel)
-        self.bn3 = nn.BatchNorm2d(out_channel)
-
         self.pool = nn.MaxPool2d((1,knn))
         self.identity = nn.Sequential(
             nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm1d(out_channel),
         )
         self.identity1 = nn.Sequential(
-            nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
+            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
             nn.BatchNorm1d(out_channel),
         )
         
@@ -123,8 +115,8 @@ class PointConv(nn.Module):
         points,xyz = x
         B, N, C = xyz.shape
         xyz = xyz.contiguous() 
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        # fps_idx = sort_sample(xyz,self.stride)
+        # fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        fps_idx = sort_sample(xyz,self.stride)
 
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
@@ -134,22 +126,14 @@ class PointConv(nn.Module):
         grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
         grouped_points = self.bn(grouped_points)
         grouped_points = self.pool(grouped_points).squeeze(-1)
-        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points1 = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
-        grouped_points1 = self.bn1(grouped_points1)
-        grouped_points1 = self.pool(grouped_points1).squeeze(-1)
-        new_points = F.relu(grouped_points + grouped_points1 + self.identity(sampled_points))
+        new_points = F.relu(grouped_points + self.identity(sampled_points))
         
         points = self.conv1(new_points)
         idx = knn_point(self.knn, sampled_xyz, sampled_xyz)
         grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
-        grouped_points = self.bn2(grouped_points)
+        grouped_points = self.bn1(grouped_points)
         grouped_points = self.pool(grouped_points).squeeze(-1)
-        idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points1 = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
-        grouped_points1 = self.bn3(grouped_points1)
-        grouped_points1 = self.pool(grouped_points1).squeeze(-1)
-        new_points = F.relu(grouped_points + grouped_points1 + self.identity1(sampled_points))
+        new_points = F.relu(grouped_points + new_points + self.identity1(new_points))
         return (new_points,sampled_xyz)
 
 if __name__ == "__main__":
