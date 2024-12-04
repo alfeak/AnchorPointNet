@@ -5,6 +5,9 @@ import os.path as osp
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
+# Ensure multi-threaded compilation
+os.environ["MAX_JOBS"] = str(os.cpu_count())  # Utilize all available cores
+
 this_dir = osp.dirname(osp.abspath(__file__))
 _ext_src_root = osp.join("pointnet2_ops", "_ext-src")
 _ext_sources = glob.glob(osp.join(_ext_src_root, "src", "*.cpp")) + glob.glob(
