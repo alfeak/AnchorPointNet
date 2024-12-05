@@ -88,7 +88,31 @@ def sort_sample(points, stride):
     idx = sorted_indices[:, ::stride]  # Shape: [B, M]
     
     return idx
-      
+
+class PointMaxPool(nn.Module):
+    def __init__(self,channel,knn=1,stride=1,dilation=1):
+        super(PointMaxPool,self).__init__()
+        self.channel = channel
+        self.knn = knn
+        self.stride = stride
+        self.dilation = dilation
+        self.pool = nn.MaxPool2d((1,self.knn))
+        self.bn = nn.BatchNorm2d(channel)
+
+    def forward(self,x):
+        points,xyz = x
+        points = points.permute(0,2,1)
+        B, N, C = xyz.shape
+        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        sampled_xyz = index_points(xyz, fps_idx)
+        sampled_points = index_points(points, fps_idx)
+
+        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
+        grouped_points = index_points(points, idx).permute(0,3,1,2)
+        grouped_points = self.bn(grouped_points)
+        new_points = self.pool(grouped_points).squeeze(-1)
+        return (new_points, sampled_xyz)
+   
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
