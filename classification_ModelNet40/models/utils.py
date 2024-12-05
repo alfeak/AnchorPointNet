@@ -161,9 +161,13 @@ class PointResConv(nn.Module):
             self.identity = nn.Sequential()
         else:
             self.identity = nn.Sequential(
-                    nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
-                    nn.BatchNorm1d(out_channel),
+              nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
+              nn.BatchNorm1d(out_channel),
             )
+        self.identity1 = nn.Sequential(
+          nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+          nn.BatchNorm1d(out_channel),
+        )
         
     def forward(self,x):
         points,xyz = x
@@ -179,16 +183,16 @@ class PointResConv(nn.Module):
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = torch.sum(grouped_points,dim=-1)
         grouped_points = self.bn(grouped_points)
-        new_points = F.relu(grouped_points)
-        
+        new_points = F.relu(grouped_points + self.identity(sampled_points))
+
         points = self.conv1(new_points)
         idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = torch.sum(grouped_points,dim=-1)
         grouped_points = self.bn1(grouped_points)
-        
-        new_points = F.relu(grouped_points + self.identity(sampled_points))
+        new_points = F.relu(grouped_points + self.identity1(new_points) + new_points)
+
         return (new_points,sampled_xyz)
 
 if __name__ == "__main__":
