@@ -131,13 +131,13 @@ class PointConv(nn.Module):
         grouped_points = self.bn1d(grouped_points)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
 
-        points = self.conv1(new_points)
-        idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:,:,::self.dilation]
-        grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
-        grouped_points = self.bn2d1(grouped_points)
-        grouped_points = torch.sum(grouped_points,dim=-1)
-        grouped_points = self.bn1d1(grouped_points)
-        new_points = F.relu(grouped_points + self.identity1(new_points) + new_points)
+        # points = self.conv1(new_points)
+        # idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:,:,::self.dilation]
+        # grouped_points = index_points(points.permute(0,2,1),idx).permute(0,3,1,2)
+        # grouped_points = self.bn2d1(grouped_points)
+        # grouped_points = torch.sum(grouped_points,dim=-1)
+        # grouped_points = self.bn1d1(grouped_points)
+        # new_points = F.relu(grouped_points + self.identity1(new_points) + new_points)
 
         return (new_points,sampled_xyz)
 
