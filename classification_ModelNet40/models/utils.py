@@ -60,7 +60,7 @@ def knn_point(nsample, xyz, new_xyz):
         group_idx: grouped points index, [B, S, nsample]
     """
     sqrdists = square_distance(new_xyz, xyz)
-    _, group_idx = torch.topk(sqrdists, nsample, dim=-1, largest=False, sorted=False)
+    _, group_idx = torch.topk(sqrdists, nsample, dim=-1, largest=False, sorted=True)
     return group_idx
 
 def sort_sample(points, stride):
