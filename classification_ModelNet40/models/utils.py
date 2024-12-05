@@ -60,7 +60,7 @@ def knn_point(nsample, xyz, new_xyz):
         group_idx: grouped points index, [B, S, nsample]
     """
     sqrdists = square_distance(new_xyz, xyz)
-    _, group_idx = torch.topk(sqrdists, nsample, dim=-1, largest=False, sorted=True)
+    _, group_idx = torch.topk(sqrdists, nsample, dim=-1, largest=False, sorted=False)
     return group_idx
 
 def sort_sample(points, stride):
@@ -122,7 +122,7 @@ class PointConv(nn.Module):
         self.in_channel = in_channel
         self.bn = nn.BatchNorm2d(in_channel)
         self.out_channel = out_channel
-        self.conv = nn.Conv2d(in_channel,out_channel,kernel_size=(1,knn),bias=False)
+        self.conv = nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False)
         self.bn1 = nn.BatchNorm1d(out_channel)
         self.identity = nn.Sequential(
           nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
@@ -142,7 +142,8 @@ class PointConv(nn.Module):
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = self.bn(grouped_points) + sampled_points.unsqueeze(-1)
-        grouped_points = self.conv(grouped_points).squeeze(-1)
+        grouped_points = self.conv(grouped_points)
+        grouped_points = torch.sum(grouped_points,dim=-1).squeeze(-1)
         grouped_points = self.bn1(grouped_points)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
 
