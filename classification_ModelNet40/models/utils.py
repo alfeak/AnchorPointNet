@@ -124,7 +124,7 @@ class PointConv(nn.Module):
         self.out_channel = out_channel
         self.conv = nn.Sequential(
           nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
-          nn.BatchNorm2d(out_channel)
+          nn.MaxPool2d((1,knn)),
         )
         self.bn1 = nn.BatchNorm1d(out_channel)
         self.identity = nn.Sequential(
@@ -145,8 +145,7 @@ class PointConv(nn.Module):
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = self.bn(grouped_points) + sampled_points.unsqueeze(-1)
-        grouped_points = self.conv(grouped_points)
-        grouped_points = torch.sum(grouped_points,dim=-1).squeeze(-1)
+        grouped_points = self.conv(grouped_points).squeeze(-1)
         grouped_points = self.bn1(grouped_points)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
 
