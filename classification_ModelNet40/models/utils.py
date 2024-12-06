@@ -122,7 +122,10 @@ class PointConv(nn.Module):
         self.in_channel = in_channel
         self.bn = nn.BatchNorm2d(in_channel)
         self.out_channel = out_channel
-        self.conv = nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False)
+        self.conv = nn.Sequential(
+          nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
+          nn.BatchNorm2d(out_channel)
+        )
         self.bn1 = nn.BatchNorm1d(out_channel)
         self.identity = nn.Sequential(
           nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
