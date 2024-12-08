@@ -132,7 +132,7 @@ class PointConv(nn.Module):
         grouped_points = self.conv(grouped_points).squeeze(-1)
         points1 = self.bn1d(grouped_points)
 
-        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
+        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = self.bn2d1(grouped_points) + sampled_points.unsqueeze(-1)
