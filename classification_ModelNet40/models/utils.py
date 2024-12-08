@@ -96,95 +96,53 @@ class PointConv(nn.Module):
         self.stride = stride
         self.dilation = dilation
         self.in_channel = in_channel
-        self.bn = nn.BatchNorm2d(in_channel)
         self.out_channel = out_channel
-        self.conv = nn.Sequential(
-          nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
-          nn.MaxPool2d((1,knn)),
-        )
-        self.bn1 = nn.BatchNorm1d(out_channel)
-        self.identity = nn.Sequential(
-          nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
-          nn.BatchNorm1d(out_channel),
-        )
 
-    def forward(self,x):
-        points,xyz = x
-        B, N, C = xyz.shape
-        xyz = xyz.contiguous() 
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        # fps_idx = sort_sample(xyz,self.stride)
-        sampled_xyz = index_points(xyz, fps_idx)
-        sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
-        
-        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
-        grouped_points = index_points(points.permute(0,2,1), idx)
-        grouped_points = grouped_points.permute(0,3,1,2)
-        grouped_points = self.bn(grouped_points) + sampled_points.unsqueeze(-1)
-        grouped_points = self.conv(grouped_points).squeeze(-1)
-        grouped_points = self.bn1(grouped_points)
-        new_points = F.relu(grouped_points + self.identity(sampled_points))
-
-        return (new_points,sampled_xyz)
-
-class PointResConv(nn.Module):
-    def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
-        super(PointResConv,self).__init__()
-        self.knn = knn
-        self.stride = stride
-        self.dilation = dilation
-        self.in_channel = in_channel
-        self.out_channel = out_channel
         self.bn2d = nn.BatchNorm2d(in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
             nn.MaxPool2d((1,knn)),
         )
         self.bn1d = nn.BatchNorm1d(out_channel)
-        
+
+        self.bn2d1 = nn.BatchNorm2d(in_channel)
         self.conv1 = nn.Sequential(
-            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+            nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
+            nn.MaxPool2d((1,knn)),
         )
-        self.pool = nn.MaxPool2d((1,knn))
         self.bn1d1 = nn.BatchNorm1d(out_channel)
-        if in_channel != out_channel:
-            self.identity = nn.Sequential(
+
+        self.identity = nn.Sequential(
                 nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
                 nn.BatchNorm1d(out_channel),
             )
-        else:
-            self.identity = nn.Sequential()
-        self.identity1 = nn.Sequential(
-          nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
-          nn.BatchNorm1d(out_channel),
-        )
         
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape
         xyz = xyz.contiguous() 
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        # fps_idx = sort_sample(xyz,self.stride)
         sampled_xyz = index_points(xyz, fps_idx)
-        sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
-        
-        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
+        sampled_points = index_points(points.permute(0,2,1), fps_idx).permute(0,2,1)
+
+        idx = knn_point(self.knn, xyz, sampled_xyz)
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = self.bn2d(grouped_points) + sampled_points.unsqueeze(-1)
         grouped_points = self.conv(grouped_points).squeeze(-1)
-        grouped_points = self.bn1d(grouped_points)
-        new_points = F.relu(grouped_points + self.identity(sampled_points))
-        
-        points = self.conv1(new_points)
-        idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
+        points1 = self.bn1d(grouped_points)
+
+        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)[:, :, ::self.dilation]
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = grouped_points.permute(0,3,1,2)
-        grouped_points = self.pool(grouped_points).squeeze(-1)
-        grouped_points = self.bn1d1(grouped_points)
-        new_points = F.relu(grouped_points + new_points + self.identity1(new_points))
+        grouped_points = self.bn2d1(grouped_points) + sampled_points.unsqueeze(-1)
+        grouped_points = self.conv1(grouped_points).squeeze(-1)
+        points2 = self.bn1d1(grouped_points)
 
+        new_points = F.relu(points1 + points2 + self.identity(sampled_points))
         return (new_points,sampled_xyz)
+
+
         
 if __name__ == "__main__":
     pass

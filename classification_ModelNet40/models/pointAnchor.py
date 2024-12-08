@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .utils import PointConv,PointResConv
+from .utils import PointConv
 
 class PointAnchorNet(nn.Module):
     def __init__(self,knn=24,dilation=1):
@@ -14,10 +14,10 @@ class PointAnchorNet(nn.Module):
         # )
         self.convlayer = nn.Sequential(
           PointConv(3,64,knn,2,dilation),
-          PointResConv(64,128,knn,2,dilation),
-          PointResConv(128,256,knn,2,dilation),
-          PointResConv(256,512,knn,2,dilation),
-          PointResConv(512,1024,knn,2,dilation),
+          PointConv(64,128,knn,2,dilation),
+          PointConv(128,256,knn,2,dilation),
+          PointConv(256,512,knn,2,dilation),
+          PointConv(512,1024,knn,2,dilation),
         )
         self.pool = nn.AdaptiveMaxPool1d(1)
         self.classifier = nn.Linear(1024, 40)
