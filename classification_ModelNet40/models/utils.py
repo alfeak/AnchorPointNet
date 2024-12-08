@@ -108,7 +108,7 @@ class PointConv(nn.Module):
         self.bn2d1 = nn.BatchNorm2d(in_channel)
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
-            nn.MaxPool2d((1,knn)),
+            nn.MaxPool2d((1,knn*dilation)),
         )
         self.bn1d1 = nn.BatchNorm1d(out_channel)
 
