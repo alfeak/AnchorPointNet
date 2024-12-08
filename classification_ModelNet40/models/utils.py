@@ -165,7 +165,7 @@ class PointResConv(nn.Module):
         grouped_points = self.bn2d(grouped_points) + sampled_points.unsqueeze(-1)
         grouped_points = self.conv(grouped_points).squeeze(-1)
         grouped_points = self.bn1d(grouped_points)
-        new_points = F.relu(grouped_points)
+        new_points = F.relu(grouped_points + self.identity(sampled_points))
         
         points = self.conv1(new_points)
         idx = knn_point(self.knn * self.dilation, sampled_xyz, sampled_xyz)[:, :, ::self.dilation]
@@ -173,7 +173,7 @@ class PointResConv(nn.Module):
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = self.pool(grouped_points).squeeze(-1)
         grouped_points = self.bn1d1(grouped_points)
-        new_points = F.relu(grouped_points + self.identity(sampled_points))
+        new_points = F.relu(grouped_points + new_points)
 
         return (new_points,sampled_xyz)
         
