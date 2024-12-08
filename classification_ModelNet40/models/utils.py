@@ -101,16 +101,19 @@ class PointConv(nn.Module):
         self.bn2d = nn.BatchNorm2d(in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
+            nn.BatchNorm2d(out_channel),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d((1,knn)),
         )
         self.bn1d = nn.BatchNorm1d(out_channel)
 
-        self.bn2d1 = nn.BatchNorm2d(in_channel)
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
-            nn.MaxPool2d((1,knn*dilation)),
+            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+            nn.BatchNorm1d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+            nn.BatchNorm1d(out_channel),
         )
-        self.bn1d1 = nn.BatchNorm1d(out_channel)
 
         self.identity = nn.Sequential(
                 nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
@@ -130,19 +133,9 @@ class PointConv(nn.Module):
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = self.bn2d(grouped_points) + sampled_points.unsqueeze(-1)
         grouped_points = self.conv(grouped_points).squeeze(-1)
-        points1 = self.bn1d(grouped_points)
-
-        idx = knn_point(self.knn * self.dilation, xyz, sampled_xyz)
-        grouped_points = index_points(points.permute(0,2,1), idx)
-        grouped_points = grouped_points.permute(0,3,1,2)
-        grouped_points = self.bn2d1(grouped_points) + sampled_points.unsqueeze(-1)
-        grouped_points = self.conv1(grouped_points).squeeze(-1)
-        points2 = self.bn1d1(grouped_points)
-
-        new_points = F.relu(points1 + points2 + self.identity(sampled_points))
+        new_points = self.bn1d(grouped_points)
+        new_points = F.relu(self.conv1(new_points) + self.identity(sampled_points))
         return (new_points,sampled_xyz)
-
-
         
 if __name__ == "__main__":
     pass
