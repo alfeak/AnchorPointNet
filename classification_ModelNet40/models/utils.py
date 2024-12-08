@@ -103,7 +103,11 @@ class PointConv(nn.Module):
           nn.MaxPool2d((1,knn)),
         )
         self.bn1 = nn.BatchNorm1d(out_channel)
-        
+        self.identity = nn.Sequential(
+          nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
+          nn.BatchNorm1d(out_channel),
+        )
+
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape
@@ -119,7 +123,7 @@ class PointConv(nn.Module):
         grouped_points = self.bn(grouped_points) + sampled_points.unsqueeze(-1)
         grouped_points = self.conv(grouped_points).squeeze(-1)
         grouped_points = self.bn1(grouped_points)
-        new_points = F.relu(grouped_points)
+        new_points = F.relu(grouped_points + self.identity(sampled_points))
 
         return (new_points,sampled_xyz)
 
@@ -150,12 +154,17 @@ class PointResConv(nn.Module):
             )
         else:
             self.identity = nn.Sequential()
+        self.identity1 = nn.Sequential(
+          nn.Conv1d(out_channel,out_channel,kernel_size=1,bias=False),
+          nn.BatchNorm1d(out_channel),
+        )
         
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape
         xyz = xyz.contiguous() 
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        # fps_idx = sort_sample(xyz,self.stride)
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1),fps_idx).permute(0,2,1)
         
@@ -173,7 +182,7 @@ class PointResConv(nn.Module):
         grouped_points = grouped_points.permute(0,3,1,2)
         grouped_points = self.pool(grouped_points).squeeze(-1)
         grouped_points = self.bn1d1(grouped_points)
-        new_points = F.relu(grouped_points + new_points)
+        new_points = F.relu(grouped_points + new_points + self.identity1(new_points))
 
         return (new_points,sampled_xyz)
         
