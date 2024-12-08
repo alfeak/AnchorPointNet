@@ -175,6 +175,8 @@ class PointResConv(nn.Module):
         grouped_points = self.bn1d1(grouped_points)
         new_points = F.relu(grouped_points + self.identity(sampled_points))
 
+        return (new_points,sampled_xyz)
+        
 if __name__ == "__main__":
     pass
     
