@@ -13,7 +13,7 @@ class PointAnchorNet(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.convlayer = nn.Sequential(
-          PointMaxPool(64,knn,2,dilation),
+          # PointMaxPool(64,knn,2,dilation),
           PointConv(64,128,knn,2,dilation),
           PointConv(128,256,knn,2,dilation),
           PointConv(256,512,knn,2,dilation),
