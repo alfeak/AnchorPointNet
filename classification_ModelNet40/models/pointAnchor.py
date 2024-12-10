@@ -15,9 +15,7 @@ class PointAnchorNet(nn.Module):
         self.convlayer = nn.Sequential(
           PointConv(3,64,knn,1,dilation),
           PointConv(64,128,knn,1,dilation),
-          PointConv(128,256,knn,1,dilation),
-          PointConv(256,512,knn,1,dilation),
-          PointConv(512,1024,knn,1,dilation),
+          PointConv(128,1024,knn,1,dilation),
         )
         self.pool = nn.AdaptiveMaxPool1d(1)
         self.classifier = nn.Linear(1024, 40)
