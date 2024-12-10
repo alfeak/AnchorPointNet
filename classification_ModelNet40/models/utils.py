@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from time import time
 import numpy as np
-from pointnet2_ops import pointnet2_utils
+# from pointnet2_ops import pointnet2_utils
 
 def square_distance(src, dst):
     """
@@ -81,42 +81,14 @@ def sort_sample(points, stride):
     B, N, C = points.shape
     
     # Compute distance along the feature dimension (D)
-    distance = torch.norm(points, dim=-1)  # Shape: [B, N]
+    distance = torch.norm(points, dim=1)  # Shape: [B, N]
     
     # Sort distances and get the sorting indices
     sorted_indices = torch.argsort(distance, dim=-1)  # Shape: [B, N]
     idx = sorted_indices[:, ::stride]  # Shape: [B, M]
     
     return idx
-   
-class PointMaxPool(nn.Module):
-    def __init__(self,channel,knn=1,stride=1,dilation=1):
-        super(PointMaxPool,self).__init__()
-        self.knn = knn
-        self.stride = stride
-        self.dilation = dilation
-        self.channel = channel
-        self.pool = nn.Sequential(
-            nn.BatchNorm2d(channel),
-            nn.MaxPool2d((1,knn)),
-            nn.BatchNorm2d(channel),
-        )
-
-    def forward(self,x):
-        points,xyz = x
-        B, N, C = xyz.shape
-        xyz = xyz.contiguous()
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        sampled_xyz = index_points(xyz, fps_idx)
-        sampled_points = index_points(points.permute(0,2,1), fps_idx).permute(0,2,1)
-
-        idx = knn_point(self.knn, xyz, sampled_xyz)
-        grouped_points = index_points(points.permute(0,2,1), idx)
-        grouped_points = grouped_points.permute(0,3,1,2)
-        new_points = self.pool(grouped_points).squeeze(-1)
-        
-        return new_points, sampled_xyz
-    
+       
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -146,7 +118,8 @@ class PointConv(nn.Module):
         points,xyz = x
         B, N, C = xyz.shape
         xyz = xyz.contiguous() 
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        fps_idx = sort_sample(points,self.stride)
+        # fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1), fps_idx)
 
