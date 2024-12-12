@@ -8,9 +8,9 @@ class PointAnchorNet(nn.Module):
         knn = knn
         dilation = dilation
         self.conv = nn.Sequential(
-            nn.Conv1d(3, 64, kernel_size=1, bias=False),
-            nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
+            nn.Linear(3,64),
+            nn.LayerNorm(64),
+            nn.GELU(),
         )
         self.convlayer = nn.Sequential(
           PointConv(64,128,knn,2,dilation),
@@ -21,7 +21,7 @@ class PointAnchorNet(nn.Module):
         self.pool = nn.AdaptiveMaxPool1d(1)
         self.classifier = nn.Linear(1024, 40)
     def forward(self, xyz):
-        points = self.conv(xyz.permute(0,2,1)).permute(0,2,1)
+        points = self.conv(xyz)
         points,xyz = self.convlayer((points,xyz))
         points = self.pool(points.permute(0,2,1)).squeeze(-1)
         points = self.classifier(points)
