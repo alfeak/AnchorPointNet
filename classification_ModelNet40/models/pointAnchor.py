@@ -21,10 +21,9 @@ class PointAnchorNet(nn.Module):
         self.pool = nn.AdaptiveMaxPool1d(1)
         self.classifier = nn.Linear(1024, 40)
     def forward(self, xyz):
-        points = self.conv(xyz.permute(0,2,1))
+        points = self.conv(xyz.permute(0,2,1)).permute(0,2,1)
         points,xyz = self.convlayer((points,xyz))
-        # points,xyz = self.convlayer((xyz.permute(0,2,1),xyz))
-        points = self.pool(points).squeeze(-1)
+        points = self.pool(points.permute(0,2,1)).squeeze(-1)
         points = self.classifier(points)
         return points
     

@@ -89,19 +89,19 @@ def sort_sample(points, stride):
     
     return idx
 
-class PointBatchNorm(nn.Module):
-  def __init__(self,in_channel):
-    super(PointBatchNorm,self).__init__()
-    self.bn = nn.BatchNorm1d(in_channel)
-
-  def forward(self,x):
-    B,D,N,K = x.shape
-    x = x.permute(0,2,3,1)
-    x = x.reshape(B*N,K,D).permute(0,2,1)
-    x = self.bn(x).permute(0,2,1).reshape(B,N,K,D)
-    x = x.permute(0,3,1,2)
-    return x
-
+class PointNorm(nn.Module):
+    def __init__(self,in_channel):
+        super(PointNorm,self).__init__()
+        self.in_channel = in_channel
+        self.norm = nn.LayerNorm(in_channel)
+    
+    def forward(self,x):
+        B,N,K,D = x.shape
+        x = x.reshape(B*N,K,D)
+        x = self.norm(x)
+        x = x.reshape(B,N,K,D)
+        return x
+        
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -110,47 +110,52 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
+        self.norm = PointNorm(in_channel)
         self.conv = nn.Sequential(
-          nn.Conv2d(in_channel,out_channel,kernel_size=1,bias=False),
-          PointBatchNorm(out_channel),
-          nn.MaxPool2d((1,knn)),
-          nn.ReLU(),
-        )
-        
-        self.conv1 = nn.Sequential(
-          nn.Conv2d(out_channel,out_channel,kernel_size=1,bias=False),
-          PointBatchNorm(out_channel),
-          nn.MaxPool2d((1,knn)),
+            nn.Conv2d(in_channel,out_channel,kernel_size=1),
+            nn.BatchNorm2d(out_channel),
+            nn.MaxPool2d(kernel_size=(1,knn)),
+            nn.ReLU(inplace=True),
         )
 
+        self.norm1 = PointNorm(out_channel)
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(out_channel,out_channel,kernel_size=1),
+            nn.BatchNorm2d(out_channel),
+            nn.MaxPool2d(kernel_size=(1,knn)),
+        )
         if in_channel == out_channel:
           self.identity = nn.Sequential()
         else:
           self.identity = nn.Sequential(
-            nn.Conv1d(in_channel,out_channel,kernel_size=1,bias=False),
+            nn.Conv1d(in_channel,out_channel,kernel_size=1),
             nn.BatchNorm1d(out_channel),
           )
+        self.relu = nn.ReLU(inplace=True)
+
     def forward(self,x):
         points,xyz = x
-        B, N, C = xyz.shape
-        S = N//self.stride
+        B, N, C = xyz.shape 
         xyz = xyz.contiguous() 
-        # fps_idx = sort_sample(xyz,self.stride)
+        # fps_idx = sort_sample(points,self.stride)
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
         sampled_xyz = index_points(xyz, fps_idx)
-        sampled_points = index_points(points.permute(0,2,1), fps_idx).permute(0,2,1)
+        sampled_points = index_points(points, fps_idx)
 
         idx = knn_point(self.knn, xyz, sampled_xyz)
-        grouped_points = index_points(points.permute(0,2,1), idx)
-        grouped_points = grouped_points.permute(0,3,1,2)
-        new_points = self.conv(grouped_points).squeeze(-1)
-
+        grouped_points = index_points(points, idx)
+        grouped_points = self.norm(grouped_points) + sampled_points.unsqueeze(-2)
+        grouped_points = grouped_points.permute(0, 3, 1, 2)
+        new_points = self.conv(grouped_points).squeeze(-1).permute(0,2,1)
+        
         idx = knn_point(self.knn, sampled_xyz, sampled_xyz)
-        grouped_points = index_points(new_points.permute(0,2,1), idx)
-        grouped_points = grouped_points.permute(0,3,1,2)
-        new_points = self.conv1(grouped_points).squeeze(-1)
+        grouped_points = index_points(new_points, idx)
+        grouped_points = self.norm1(grouped_points) + new_points.unsqueeze(-2)
+        grouped_points = grouped_points.permute(0, 3, 1, 2)
+        new_points = self.conv1(grouped_points).squeeze(-1).permute(0,2,1)
 
-        new_points = F.relu(new_points + self.identity(sampled_points))
+        idenetity = self.identity(sampled_points.permute(0,2,1)).permute(0,2,1)
+        new_points = self.relu(new_points + idenetity)
 
         return (new_points,sampled_xyz)
         
