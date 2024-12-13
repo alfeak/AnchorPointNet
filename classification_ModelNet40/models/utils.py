@@ -113,8 +113,8 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
+        self.norm = PointNorm(in_channel)
         self.conv = nn.Sequential(
-            PointNorm(in_channel),
             nn.Linear(in_channel,out_channel),
         )
         if in_channel == out_channel:
@@ -137,6 +137,7 @@ class PointConv(nn.Module):
 
         idx = knn_point(self.knn, xyz, sampled_xyz)
         grouped_points = index_points(points, idx)
+        grouped_points = self.norm(grouped_points) + sampled_points.unsqueeze(-2)
         grouped_points = self.conv(grouped_points)
         new_points = torch.max(grouped_points,dim=-2)[0]
 
