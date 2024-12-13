@@ -105,6 +105,33 @@ class PointNorm(nn.Module):
         x = self.gamma * x + self.beta
         return x
 
+class PointResBlock(nn.Module):
+    def __init__(self, in_channel, block_num=2, knn=1, dilation=1):
+        super(PointResBlock, self).__init__()
+        self.knn = knn
+        self.in_channel = in_channel
+        self.block_num = block_num
+        self.conv = nn.ModuleList([nn.Sequential(
+            nn.Linear(in_channel, in_channel),
+            nn.LayerNorm(in_channel),
+        ) for _ in range(block_num)])
+        self.gelu = nn.GELU()
+    
+    def forward(self, x):
+        points, xyz = x
+        B, N, C = xyz.shape
+        
+        # Compute KNN indices once
+        idx = knn_point(self.knn, xyz, xyz)
+        
+        for i in range(self.block_num):
+            grouped_points = index_points(points, idx)  # Group points based on KNN
+            grouped_points = self.conv[i](grouped_points)
+            new_points = torch.max(grouped_points, dim=-2)[0]  # Max pooling over neighbors
+            points = self.gelu(new_points + points)  # Residual connection with activation
+        
+        return points, xyz
+
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -125,7 +152,8 @@ class PointConv(nn.Module):
                 nn.LayerNorm(out_channel),
           )
         self.gelu = nn.GELU()
-        
+        self.blocks = PointResBlock(out_channel,block_num=2,knn=knn,dilation=dilation)
+
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape 
@@ -142,7 +170,7 @@ class PointConv(nn.Module):
         new_points = torch.max(grouped_points,dim=-2)[0]
 
         new_points = self.gelu(new_points + self.identity(sampled_points))
-        return (new_points,sampled_xyz)
+        return self.blocks((new_points,sampled_xyz))
         
 if __name__ == "__main__":
     pass
