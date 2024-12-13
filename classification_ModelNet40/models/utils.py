@@ -114,8 +114,8 @@ class PointConv(nn.Module):
         self.in_channel = in_channel
         self.out_channel = out_channel
         self.conv = nn.Sequential(
+            PointNorm(in_channel),
             nn.Linear(in_channel,out_channel),
-            PointNorm(out_channel),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
