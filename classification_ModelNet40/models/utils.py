@@ -126,7 +126,7 @@ class PointConv(nn.Module):
         std = grouped_points.std(dim=-1, keepdim=True, unbiased=False)
         grouped_points = (grouped_points - mean) / (std + 1e-6)
         grouped_points = self.gamma * grouped_points + self.beta
-        grouped_points = grouped_points + sampled_points.unsqueeze(-2)
+        grouped_points = grouped_points #+ sampled_points.unsqueeze(-2)
         grouped_points = self.conv(grouped_points)
         new_points = torch.max(grouped_points,dim=-2)[0]
 
