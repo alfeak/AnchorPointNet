@@ -89,6 +89,22 @@ def sort_sample(points, stride):
     
     return idx
 
+class PointNorm(nn.Module):
+    def __init__(self,in_channel):
+        super(PointNorm,self).__init__()
+        self.in_channel = in_channel
+        self.gamma = nn.Parameter(torch.ones(in_channel))
+        self.beta = nn.Parameter(torch.zeros(in_channel))
+        self.eps = 1e-6
+    def forward(self,x):
+        B,N,K,D = x.shape
+        mean = x[:,:,0,:].unsqueeze(-2) # [b,n,1,d]
+        std = torch.std((x-mean).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
+        std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
+        x = (x-mean)/(std+self.eps)
+        x = self.gamma * x + self.beta
+        return x
+
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -97,9 +113,9 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.norm = nn.LayerNorm(in_channel)
         self.conv = nn.Sequential(
             nn.Linear(in_channel,out_channel),
+            PointNorm(out_channel),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
@@ -121,7 +137,6 @@ class PointConv(nn.Module):
 
         idx = knn_point(self.knn, xyz, sampled_xyz)
         grouped_points = index_points(points, idx)
-        grouped_points = grouped_points #+ sampled_points.unsqueeze(-2)
         grouped_points = self.conv(grouped_points)
         new_points = torch.max(grouped_points,dim=-2)[0]
 
