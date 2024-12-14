@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from time import time
 import numpy as np
-from pointnet2_ops import pointnet2_utils
+# from pointnet2_ops import pointnet2_utils
 
 def square_distance(src, dst):
     """
@@ -111,6 +111,7 @@ class PointResBlock(nn.Module):
         self.knn = knn
         self.in_channel = in_channel
         self.block_num = block_num
+        self.norm = nn.ModuleList([PointNorm(in_channel) for _ in range(block_num)])
         self.conv = nn.ModuleList([nn.Sequential(
             nn.Linear(in_channel, in_channel),
             nn.LayerNorm(in_channel),
@@ -126,6 +127,7 @@ class PointResBlock(nn.Module):
         
         for i in range(self.block_num):
             grouped_points = index_points(points, idx)  # Group points based on KNN
+            grouped_points = self.norm[i](grouped_points) + points.unsqueeze(-2)
             grouped_points = self.conv[i](grouped_points)
             new_points = torch.max(grouped_points, dim=-2)[0]  # Max pooling over neighbors
             points = self.gelu(new_points + points)  # Residual connection with activation
@@ -140,9 +142,9 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
+        self.norm = PointNorm(in_channel)
         self.conv = nn.Sequential(
             nn.Linear(in_channel,out_channel),
-            PointNorm(out_channel),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
@@ -152,19 +154,20 @@ class PointConv(nn.Module):
                 nn.LayerNorm(out_channel),
           )
         self.gelu = nn.GELU()
-        self.blocks = PointResBlock(out_channel,block_num=2,knn=knn,dilation=dilation)
+        self.blocks = PointResBlock(out_channel,block_num=2,knn=9,dilation=dilation)
 
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape 
         xyz = xyz.contiguous() 
-        # fps_idx = sort_sample(points,self.stride)
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
+        fps_idx = sort_sample(points,self.stride)
+        # fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points, fps_idx)
 
         idx = knn_point(self.knn, xyz, sampled_xyz)
         grouped_points = index_points(points, idx)
+        grouped_points = self.norm(grouped_points) + sampled_points.unsqueeze(-2)
         grouped_points = self.conv(grouped_points)
         new_points = torch.max(grouped_points,dim=-2)[0]
 
