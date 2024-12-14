@@ -81,7 +81,7 @@ def sort_sample(points, stride):
     B, N, C = points.shape
     
     # Compute distance along the feature dimension (D)
-    distance = torch.norm(points, dim=-1)  # Shape: [B, N]
+    distance = torch.norm(points, dim=-2)  # Shape: [B, N]
     
     # Sort distances and get the sorting indices
     sorted_indices = torch.argsort(distance, dim=-1)  # Shape: [B, N]
@@ -98,7 +98,7 @@ class PointNorm(nn.Module):
         self.eps = 1e-6
     def forward(self,x):
         B,N,K,D = x.shape
-        mean = x[:,:,0,:].unsqueeze(-2) # [b,n,1,d]
+        mean = x[:,:,0,:].unsqueeze(-2) #[b,n,1,d]
         std = torch.std((x-mean).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-mean)/(std+self.eps)
@@ -113,27 +113,28 @@ class PointResBlock(nn.Module):
         self.block_num = block_num
         self.norm = nn.ModuleList([PointNorm(in_channel) for _ in range(block_num)])
         self.conv = nn.ModuleList([nn.Sequential(
-            nn.Linear(in_channel, in_channel),
-            nn.LayerNorm(in_channel),
+            nn.Conv2d(in_channel,in_channel,kernel_size=1),
+            nn.BatchNorm2d(in_channel),
+            nn.MaxPool2d((1,knn)),
         ) for _ in range(block_num)])
-        self.gelu = nn.GELU()
+        self.relu = nn.ReLU(inplace=True)
     
     def forward(self, x):
         points, xyz = x
         B, N, C = xyz.shape
-        
         # Compute KNN indices once
         idx = knn_point(self.knn, xyz, xyz)
-        
+
         for i in range(self.block_num):
+            points = points.permute(0, 2, 1)
             grouped_points = index_points(points, idx)  # Group points based on KNN
             grouped_points = self.norm[i](grouped_points) + points.unsqueeze(-2)
-            grouped_points = self.conv[i](grouped_points)
-            new_points = torch.max(grouped_points, dim=-2)[0]  # Max pooling over neighbors
-            points = self.gelu(new_points + points)  # Residual connection with activation
-        
-        return points, xyz
+            grouped_points = grouped_points.permute(0, 3, 1, 2)
+            new_points = self.conv[i](grouped_points).squeeze(-1)
+            points = self.relu(new_points + points.permute(0, 2, 1))  # Residual connection with activation
 
+        return points, xyz
+    
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -144,18 +145,21 @@ class PointConv(nn.Module):
         self.out_channel = out_channel
         self.norm = PointNorm(in_channel)
         self.conv = nn.Sequential(
-            nn.Linear(in_channel,out_channel),
+            nn.Conv2d(in_channel,out_channel,kernel_size=1),
+            nn.BatchNorm2d(out_channel),
+            nn.MaxPool2d((1,knn)),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
         else:
             self.identity = nn.Sequential(
-                nn.Linear(in_channel,out_channel),
-                nn.LayerNorm(out_channel),
+                nn.Conv1d(in_channel,out_channel,kernel_size=1),
+                nn.BatchNorm1d(out_channel),
           )
-        self.gelu = nn.GELU()
-        self.blocks = PointResBlock(out_channel,block_num=2,knn=9,dilation=dilation)
-
+        self.relu = nn.ReLU(inplace=True)
+        
+        self.blocks = PointResBlock(out_channel,block_num=2,knn=3,dilation=dilation)
+        
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape 
@@ -163,17 +167,18 @@ class PointConv(nn.Module):
         # fps_idx = sort_sample(points,self.stride)
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
         sampled_xyz = index_points(xyz, fps_idx)
-        sampled_points = index_points(points, fps_idx)
+        sampled_points = index_points(points.permute(0,2,1), fps_idx)
 
         idx = knn_point(self.knn, xyz, sampled_xyz)
-        grouped_points = index_points(points, idx)
+        grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = self.norm(grouped_points) + sampled_points.unsqueeze(-2)
-        grouped_points = self.conv(grouped_points)
-        new_points = torch.max(grouped_points,dim=-2)[0]
-
-        new_points = self.gelu(new_points + self.identity(sampled_points))
-        return self.blocks((new_points,sampled_xyz))
+        grouped_points = grouped_points.permute(0,3,1,2)
+        new_points = self.conv(grouped_points).squeeze(-1)
+        new_points = self.relu(new_points + self.identity(sampled_points.permute(0,2,1)))
+        # return (new_points,sampled_xyz)
         
+        return self.blocks((new_points,sampled_xyz))
+
 if __name__ == "__main__":
     pass
     
