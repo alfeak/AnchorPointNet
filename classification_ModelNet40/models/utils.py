@@ -105,6 +105,7 @@ class PointNorm(nn.Module):
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-mean)/(std+self.eps)
         x = self.gamma * x + self.beta
+        x = x + mean
         x = self.weight*x + (1-self.weight)*mean
         return x
 
@@ -135,9 +136,9 @@ class PointConv(nn.Module):
         points,xyz = x
         B, N, C = xyz.shape 
         xyz = xyz.contiguous() 
-        # fps_idx = sort_sample(points,self.stride)
+        fps_idx = sort_sample(points,self.stride)
         fps_idx = pointnet2_utils.furthest_point_sample(xyz, N//self.stride).long()
-        sampled_xyz = index_points(xyz, fps_idx)
+        # sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1), fps_idx).permute(0,2,1)
 
         idx = knn_point(self.knn, xyz, sampled_xyz)
