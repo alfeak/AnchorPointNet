@@ -96,18 +96,48 @@ class PointNorm(nn.Module):
         self.knn = knn
         self.gamma = nn.Parameter(torch.ones(knn,in_channel))
         self.beta = nn.Parameter(torch.zeros(knn,in_channel))
-        self.weight = nn.Parameter(torch.ones(knn,in_channel) * 0.5)
         self.eps = 1e-6
     def forward(self,x):
         B,N,K,D = x.shape
-        mean = x[:,:,0,:].unsqueeze(-2) #[b,n,1,d]
+        anchor_points = x[:,:,0,:].unsqueeze(-2) #[b,n,1,d]
+        mean = torch.mean(x,dim=-2,keepdim=True)
         std = torch.std((x-mean).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-mean)/(std+self.eps)
         x = self.gamma * x + self.beta
-        x = x + mean
-        x = self.weight*x + (1-self.weight)*mean
+        x = x + anchor_points
         return x
+
+class PointResBlock(nn.Module):
+    def __init__(self, in_channel, block_num=2, knn=1, dilation=1):
+        super(PointResBlock, self).__init__()
+        self.knn = knn
+        self.in_channel = in_channel
+        self.block_num = block_num
+        self.norm = nn.ModuleList([PointNorm(knn,in_channel) for _ in range(block_num)])
+        self.conv = nn.ModuleList([nn.Sequential(
+            nn.Conv2d(in_channel,in_channel,kernel_size=1),
+            nn.MaxPool2d((1,knn)),
+        ) for _ in range(block_num)])
+        self.bn = nn.ModuleList([nn.BatchNorm1d(in_channel) for _ in range(block_num)])
+        self.relu = nn.ReLU(inplace=True)
+    
+    def forward(self, x):
+        points, xyz = x
+        B, N, C = xyz.shape
+        # Compute KNN indices once
+        idx = knn_point(self.knn, xyz, xyz)
+
+        for i in range(self.block_num):
+            points = points.permute(0, 2, 1)
+            grouped_points = index_points(points, idx)  # Group points based on KNN
+            grouped_points = self.norm[i](grouped_points)
+            grouped_points = grouped_points.permute(0, 3, 1, 2)
+            grouped_points = self.conv[i](grouped_points).squeeze(-1)
+            new_points = self.bn[i](grouped_points)
+            points = self.relu(new_points + points.permute(0, 2, 1))  # Residual connection with activation
+
+        return points, xyz
 
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
@@ -131,7 +161,7 @@ class PointConv(nn.Module):
                 nn.BatchNorm1d(out_channel),
           )
         self.relu = nn.ReLU(inplace=True)
-        
+        self.blocks = PointResBlock(out_channel,block_num=1,knn=knn,dilation=dilation)
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape 
@@ -149,7 +179,8 @@ class PointConv(nn.Module):
         new_points = self.bn(grouped_points)
         new_points = self.relu(new_points + self.identity(sampled_points))
 
-        return (new_points,sampled_xyz)
+        return self.blocks((new_points,sampled_xyz))
+    
 
 if __name__ == "__main__":
     pass
