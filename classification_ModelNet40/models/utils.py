@@ -96,6 +96,7 @@ class PointNorm(nn.Module):
         self.knn = knn
         self.gamma = nn.Parameter(torch.ones(knn,in_channel))
         self.beta = nn.Parameter(torch.zeros(knn,in_channel))
+        self.weight = nn.Parameter(torch.ones(knn,in_channel) * 0.5)
         self.eps = 1e-6
     def forward(self,x):
         B,N,K,D = x.shape
@@ -105,7 +106,7 @@ class PointNorm(nn.Module):
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
         x = self.gamma * x + self.beta
-        x = x + anchor_points
+        x = self.weight*x + (1-self.weight)*anchor_points
         return x
 
 class PointResBlock(nn.Module):
