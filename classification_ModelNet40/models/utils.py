@@ -105,7 +105,7 @@ class PointNorm(nn.Module):
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-mean)/(std+self.eps)
         x = self.gamma * x + self.beta
-        x = x + anchor_points
+        # x = x + anchor_points
         return x
 
 class PointResBlock(nn.Module):
@@ -162,13 +162,13 @@ class PointConv(nn.Module):
           )
         self.relu = nn.ReLU(inplace=True)
         # self.blocks = PointResBlock(out_channel,block_num=1,knn=knn,dilation=dilation)
-        self.post_conv = nn.Sequential(
-              nn.Conv1d(out_channel,out_channel,kernel_size=1),
-              nn.BatchNorm1d(out_channel),
-              nn.ReLU(inplace=True),
-              nn.Conv1d(out_channel,out_channel,kernel_size=1),
-              nn.BatchNorm1d(out_channel),
-          )
+        # self.post_conv = nn.Sequential(
+        #       nn.Conv1d(out_channel,out_channel,kernel_size=1),
+        #       nn.BatchNorm1d(out_channel),
+        #       nn.ReLU(inplace=True),
+        #       nn.Conv1d(out_channel,out_channel,kernel_size=1),
+        #       nn.BatchNorm1d(out_channel),
+        #   )
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape 
@@ -185,7 +185,7 @@ class PointConv(nn.Module):
         grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = self.bn(grouped_points)
         new_points = self.relu(new_points + self.identity(sampled_points))
-        new_points = self.relu(new_points + self.post_conv(new_points))
+        # new_points = self.relu(new_points + self.post_conv(new_points))
         return (new_points,sampled_xyz)
     
 
