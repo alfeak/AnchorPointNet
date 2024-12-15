@@ -100,10 +100,10 @@ class PointNorm(nn.Module):
     def forward(self,x):
         B,N,K,D = x.shape
         anchor_points = x[:,:,0,:].unsqueeze(-2) #[b,n,1,d]
-        mean = torch.mean(x,dim=-2,keepdim=True)
-        std = torch.std((x-mean).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
+        # mean = torch.mean(x,dim=-2,keepdim=True)
+        std = torch.std((x-anchor_points).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
-        x = (x-mean)/(std+self.eps)
+        x = (x-anchor_points)/(std+self.eps)
         x = self.gamma * x + self.beta
         # x = x + anchor_points
         return x
