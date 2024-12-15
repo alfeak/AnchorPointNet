@@ -161,7 +161,14 @@ class PointConv(nn.Module):
                 nn.BatchNorm1d(out_channel),
           )
         self.relu = nn.ReLU(inplace=True)
-        self.blocks = PointResBlock(out_channel,block_num=1,knn=knn,dilation=dilation)
+        # self.blocks = PointResBlock(out_channel,block_num=1,knn=knn,dilation=dilation)
+        self.post_conv = nn.Sequential(
+              nn.Conv1d(out_channel,out_channel,kernel_size=1),
+              nn.BatchNorm1d(out_channel),
+              nn.ReLU(inplace=True),
+              nn.Conv1d(out_channel,out_channel,kernel_size=1),
+              nn.BatchNorm1d(out_channel),
+          )
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape 
@@ -178,8 +185,8 @@ class PointConv(nn.Module):
         grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = self.bn(grouped_points)
         new_points = self.relu(new_points + self.identity(sampled_points))
-
-        return self.blocks((new_points,sampled_xyz))
+        new_points = self.relu(new_points + self.post_conv(new_points))
+        return (new_points,sampled_xyz)
     
 
 if __name__ == "__main__":
