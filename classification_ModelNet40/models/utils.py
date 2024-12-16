@@ -147,13 +147,12 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.bn2d = nn.BatchNorm2d(in_channel)
         self.norm = PointNorm(knn,in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
+            nn.BatchNorm2d(out_channel),
             nn.MaxPool2d((1,knn)),
         )
-        self.bn1d = nn.BatchNorm1d(out_channel)
         if in_channel == out_channel:
             self.identity = nn.Sequential()
         else:
@@ -161,12 +160,16 @@ class PointConv(nn.Module):
                 nn.Conv1d(in_channel,out_channel,kernel_size=1),
                 nn.BatchNorm1d(out_channel),
           )
-        self.relu = nn.ReLU(inplace=True)
         # self.blocks = PointResBlock(out_channel,block_num=1,knn=knn,dilation=dilation)
         self.post_conv = nn.Sequential(
               nn.Conv1d(out_channel,out_channel,kernel_size=1),
               nn.BatchNorm1d(out_channel),
+              nn.ReLU(inplace=True),
+              nn.Conv1d(out_channel,out_channel,kernel_size=1),
+              nn.BatchNorm1d(out_channel),
           )
+        self.relu = nn.ReLU(inplace=True)
+
     def forward(self,x):
         points,xyz = x
         B, N, C = xyz.shape 
@@ -180,11 +183,9 @@ class PointConv(nn.Module):
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = self.norm(grouped_points)
         grouped_points = grouped_points.permute(0,3,1,2)
-        grouped_points = self.bn2d(grouped_points) + sampled_points.unsqueeze(-1)
-        grouped_points = self.conv(grouped_points).squeeze(-1)
-        new_points = self.bn1d(grouped_points)
-        new_points = self.relu(new_points + self.identity(sampled_points))
-        # new_points = self.relu(new_points + self.post_conv(new_points))
+        new_points = self.conv(grouped_points).squeeze(-1)
+        new_points = self.relu(self.post_conv(new_points) + self.identity(sampled_points))
+
         return (new_points,sampled_xyz)
     
 
