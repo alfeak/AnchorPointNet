@@ -150,12 +150,12 @@ class PointConv(nn.Module):
         self.norm = PointNorm(knn,in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
-            nn.MaxPool2d((1,2)),
+            nn.MaxPool2d((1,3)),
             nn.BatchNorm2d(out_channel),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channel,out_channel,kernel_size=1),
             nn.BatchNorm2d(out_channel),
-            nn.MaxPool2d((1,knn//2)),
+            nn.MaxPool2d((1,knn//3)),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
@@ -165,13 +165,13 @@ class PointConv(nn.Module):
                 nn.BatchNorm1d(out_channel),
           )
         # self.blocks = PointResBlock(out_channel,block_num=1,knn=knn,dilation=dilation)
-        self.post_conv = nn.Sequential(
-              nn.Conv1d(out_channel,out_channel,kernel_size=1),
-              nn.BatchNorm1d(out_channel),
-              nn.ReLU(inplace=True),
-              nn.Conv1d(out_channel,out_channel,kernel_size=1),
-              nn.BatchNorm1d(out_channel),
-          )
+        # self.post_conv = nn.Sequential(
+        #       nn.Conv1d(out_channel,out_channel,kernel_size=1),
+        #       nn.BatchNorm1d(out_channel),
+        #       nn.ReLU(inplace=True),
+        #       nn.Conv1d(out_channel,out_channel,kernel_size=1),
+        #       nn.BatchNorm1d(out_channel),
+        #   )
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self,x):
@@ -188,7 +188,7 @@ class PointConv(nn.Module):
         grouped_points = self.norm(grouped_points)
         grouped_points = grouped_points.permute(0,3,1,2)
         new_points = self.conv(grouped_points).squeeze(-1)
-        new_points = self.relu(self.post_conv(new_points) + self.identity(sampled_points))
+        new_points = self.relu(new_points + self.identity(sampled_points))
 
         return (new_points,sampled_xyz)
     
