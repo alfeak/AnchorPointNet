@@ -100,7 +100,6 @@ class PointNorm(nn.Module):
     def forward(self,x):
         B,N,K,D = x.shape
         anchor_points = x[:,:,0,:].unsqueeze(-2) #[b,n,1,d]
-        # mean = torch.mean(x,dim=-2,keepdim=True)
         std = torch.std((x-anchor_points).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
@@ -109,35 +108,67 @@ class PointNorm(nn.Module):
         return x
 
 class PointResBlock(nn.Module):
-    def __init__(self, in_channel, block_num=2, knn=1, dilation=1):
+    def __init__(self, in_channel, out_channel, knn=1, stride=1, dilation=1):
         super(PointResBlock, self).__init__()
         self.knn = knn
+        self.stride = stride
         self.in_channel = in_channel
-        self.block_num = block_num
-        self.norm = nn.ModuleList([PointNorm(knn,in_channel) for _ in range(block_num)])
-        self.conv = nn.ModuleList([nn.Sequential(
-            nn.Conv2d(in_channel,in_channel,kernel_size=1),
-            nn.MaxPool2d((1,knn)),
-        ) for _ in range(block_num)])
-        self.bn = nn.ModuleList([nn.BatchNorm1d(in_channel) for _ in range(block_num)])
+        self.out_channel = out_channel
+        self.dilation = dilation
+        self.norm = PointNorm(knn,in_channel)
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channel, out_channel, kernel_size=1),
+            nn.MaxPool2d((1, 3)),
+            nn.BatchNorm2d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channel, out_channel, kernel_size=1),
+            nn.MaxPool2d((1, knn//3)),
+            nn.BatchNorm2d(out_channel),
+            nn.ReLU(inplace=True),
+        )
+        self.norm1 = PointNorm(knn,out_channel)
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(out_channel, out_channel, kernel_size=1),
+            nn.MaxPool2d((1, 3)),
+            nn.BatchNorm2d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channel, out_channel, kernel_size=1),
+            nn.MaxPool2d((1, knn//3)),
+            nn.BatchNorm2d(out_channel),
+        )
+        if in_channel == out_channel:
+            self.identity = nn.Sequential()
+        else:
+            self.identity = nn.Sequential(
+                nn.Conv1d(in_channel,out_channel,kernel_size=1),
+                nn.BatchNorm1d(out_channel),
+            )
         self.relu = nn.ReLU(inplace=True)
-    
+        
     def forward(self, x):
         points, xyz = x
         B, N, C = xyz.shape
-        # Compute KNN indices once
-        idx = knn_point(self.knn, xyz, xyz)
+        xyz = xyz.contiguous()
+        # fps_idx = sort_sample(points, self.stride)
+        fps_idx = pointnet2_utils.furthest_point_sample(xyz, N // self.stride).long()
+        sampled_xyz = index_points(xyz, fps_idx)
+        sampled_points = index_points(points.permute(0, 2, 1), fps_idx).permute(0, 2, 1)
 
-        for i in range(self.block_num):
-            points = points.permute(0, 2, 1)
-            grouped_points = index_points(points, idx)  # Group points based on KNN
-            grouped_points = self.norm[i](grouped_points)
-            grouped_points = grouped_points.permute(0, 3, 1, 2)
-            grouped_points = self.conv[i](grouped_points).squeeze(-1)
-            new_points = self.bn[i](grouped_points)
-            points = self.relu(new_points + points.permute(0, 2, 1))  # Residual connection with activation
+        idx = knn_point(self.knn, xyz, sampled_xyz)
+        grouped_points = index_points(points.permute(0, 2, 1), idx)
+        grouped_points = self.norm(grouped_points)
+        grouped_points = grouped_points.permute(0, 3, 1, 2)
+        points = self.conv(grouped_points).squeeze(-1)
 
-        return points, xyz
+        idx = knn_point(self.knn, sampled_xyz, sampled_xyz)
+        grouped_points = index_points(points.permute(0, 2, 1), idx)
+        grouped_points = self.norm1(grouped_points)
+        grouped_points = grouped_points.permute(0, 3, 1, 2)
+        points = self.conv1(grouped_points).squeeze(-1)
+
+        new_points = self.relu(points + self.identity(sampled_points))
+
+        return new_points, sampled_xyz
 
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
@@ -150,12 +181,8 @@ class PointConv(nn.Module):
         self.norm = PointNorm(knn,in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
-            nn.MaxPool2d((1,3)),
+            nn.MaxPool2d((1,knn)),
             nn.BatchNorm2d(out_channel),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channel,out_channel,kernel_size=1),
-            nn.BatchNorm2d(out_channel),
-            nn.MaxPool2d((1,knn//3)),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
@@ -164,14 +191,6 @@ class PointConv(nn.Module):
                 nn.Conv1d(in_channel,out_channel,kernel_size=1),
                 nn.BatchNorm1d(out_channel),
           )
-        # self.blocks = PointResBlock(out_channel,block_num=1,knn=knn,dilation=dilation)
-        # self.post_conv = nn.Sequential(
-        #       nn.Conv1d(out_channel,out_channel,kernel_size=1),
-        #       nn.BatchNorm1d(out_channel),
-        #       nn.ReLU(inplace=True),
-        #       nn.Conv1d(out_channel,out_channel,kernel_size=1),
-        #       nn.BatchNorm1d(out_channel),
-        #   )
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self,x):
