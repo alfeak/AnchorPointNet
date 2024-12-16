@@ -150,8 +150,12 @@ class PointConv(nn.Module):
         self.norm = PointNorm(knn,in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
+            nn.MaxPool2d((1,2)),
             nn.BatchNorm2d(out_channel),
-            nn.MaxPool2d((1,knn)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channel,out_channel,kernel_size=1),
+            nn.BatchNorm2d(out_channel),
+            nn.MaxPool2d((1,knn//2)),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
