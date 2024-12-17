@@ -96,7 +96,6 @@ class PointNorm(nn.Module):
         self.knn = knn
         self.gamma = nn.Parameter(torch.ones(knn,in_channel))
         self.beta = nn.Parameter(torch.zeros(knn,in_channel))
-        self.softmax = nn.Softmax(dim=-1)
         self.eps = 1e-6
     def forward(self,x):
         B,N,K,D = x.shape
@@ -105,8 +104,19 @@ class PointNorm(nn.Module):
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
         x = self.gamma * x + self.beta
-        x = self.softmax(x) * anchor_points
+        x = x + anchor_points
         return x
+
+class PointLayerNorm(nn.Module):
+    def __init__(self,in_channel):
+        super(PointLayerNorm,self).__init__()
+        self.in_channel = in_channel
+        self.layernorm = nn.LayerNorm(in_channel)
+
+    def forward(self,x):
+        x = x.squeeze(-1)
+        x = self.layernorm(x.permute(0,2,1))
+        return x.permute(0,2,1)
 
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
@@ -119,8 +129,9 @@ class PointConv(nn.Module):
         self.norm = PointNorm(knn,in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
-            nn.MaxPool2d((1,knn)),
             nn.BatchNorm2d(out_channel),
+            nn.MaxPool2d((1,knn)),
+            PointLayerNorm(out_channel)
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
@@ -144,7 +155,7 @@ class PointConv(nn.Module):
         grouped_points = index_points(points.permute(0,2,1), idx)
         grouped_points = self.norm(grouped_points)
         grouped_points = grouped_points.permute(0,3,1,2)
-        new_points = self.conv(grouped_points).squeeze(-1)
+        new_points = self.conv(grouped_points)
         new_points = self.relu(new_points + self.identity(sampled_points))
 
         return (new_points,sampled_xyz)
