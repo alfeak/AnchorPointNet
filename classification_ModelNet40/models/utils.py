@@ -96,6 +96,7 @@ class PointNorm(nn.Module):
         self.knn = knn
         self.gamma = nn.Parameter(torch.ones(knn,in_channel))
         self.beta = nn.Parameter(torch.zeros(knn,in_channel))
+        self.softmax = nn.Softmax(dim=-1)
         self.eps = 1e-6
     def forward(self,x):
         B,N,K,D = x.shape
@@ -104,24 +105,8 @@ class PointNorm(nn.Module):
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
         x = self.gamma * x + self.beta
-        x = x + anchor_points
+        x = self.softmax(x) * anchor_points
         return x
-
-class PointBallAttention(nn.Module):
-    def __init__(self,in_channel,knn):
-        super(PointBallAttention, self).__init__()
-        self.in_channel = in_channel
-        self.knn = knn
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channel,in_channel,kernel_size=(1,knn)),
-            nn.BatchNorm2d(in_channel),
-            nn.Sigmoid(),
-        )
-        self.pool = nn.MaxPool2d((1,knn))
-    def forward(self,x):
-        attention = self.conv(x).squeeze(-1)
-        x = self.pool(x).squeeze(-1)
-        return x * attention
 
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
@@ -134,10 +119,8 @@ class PointConv(nn.Module):
         self.norm = PointNorm(knn,in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
+            nn.MaxPool2d((1,knn)),
             nn.BatchNorm2d(out_channel),
-            nn.ReLU(inplace=True),
-            PointBallAttention(out_channel,knn),
-            nn.BatchNorm1d(out_channel),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
