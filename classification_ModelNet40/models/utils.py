@@ -116,10 +116,10 @@ class PointConv(nn.Module):
         self.in_channel = in_channel
         self.out_channel = out_channel
         self.norm = PointNorm(knn,in_channel)
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channel,out_channel,kernel_size=1),
-            nn.BatchNorm2d(out_channel),
-        )
+        self.conv = nn.Conv1d(in_channel,out_channel,kernel_size=1)
+        self.pn = PointNorm(knn,out_channel)
+        self.bn = nn.BatchNorm1d(out_channel)
+
         if in_channel == out_channel:
             self.identity = nn.Sequential()
         else:
@@ -127,21 +127,6 @@ class PointConv(nn.Module):
                 nn.Conv1d(in_channel,out_channel,kernel_size=1),
                 nn.BatchNorm1d(out_channel),
           )
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(out_channel,out_channel,kernel_size=1),
-            nn.BatchNorm2d(out_channel),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channel,out_channel,kernel_size=1),
-            nn.BatchNorm2d(out_channel),
-        )
-        self.pool = nn.MaxPool2d((1,knn))
-        self.conv2 = nn.Sequential(
-            nn.Conv1d(out_channel,out_channel,kernel_size=1),
-            nn.BatchNorm1d(out_channel),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(out_channel,out_channel,kernel_size=1),
-            nn.BatchNorm1d(out_channel),
-        )
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self,x):
@@ -153,18 +138,16 @@ class PointConv(nn.Module):
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1), fps_idx).permute(0,2,1)
 
+        points = self.conv(points)
         idx = knn_point(self.knn, xyz, sampled_xyz)
         grouped_points = index_points(points.permute(0,2,1), idx)
-        grouped_points = self.norm(grouped_points)
-        grouped_points = grouped_points.permute(0,3,1,2)
-        grouped_points = self.conv(grouped_points).squeeze(-1)
-        grouped_points = self.relu(grouped_points + self.identity(sampled_points).unsqueeze(-1))
+        grouped_points = self.pn(grouped_points)
+        grouped_points = torch.max(grouped_points, dim=-2, keepdim=False)[0]
+        grouped_points = self.bn(grouped_points.permute(0,2,1))
+        new_points = self.relu(grouped_points + self.identity(sampled_points))
         
-        grouped_points = self.relu(self.conv1(grouped_points) + grouped_points)
-        new_points = self.pool(grouped_points).squeeze(-1)
-        new_points = self.relu(self.conv2(new_points) + new_points)
         return (new_points,sampled_xyz)
-    
+        
 
 if __name__ == "__main__":
     pass
