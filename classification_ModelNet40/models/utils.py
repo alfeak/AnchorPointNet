@@ -107,17 +107,6 @@ class PointNorm(nn.Module):
         x = x + anchor_points
         return x
 
-class PointLayerNorm(nn.Module):
-    def __init__(self,in_channel):
-        super(PointLayerNorm,self).__init__()
-        self.in_channel = in_channel
-        self.layernorm = nn.LayerNorm(in_channel)
-
-    def forward(self,x):
-        x = x.squeeze(-1)
-        x = self.layernorm(x.permute(0,2,1))
-        return x.permute(0,2,1)
-
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -130,8 +119,10 @@ class PointConv(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
             nn.BatchNorm2d(out_channel),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channel,out_channel,kernel_size=1),
             nn.MaxPool2d((1,knn)),
-            PointLayerNorm(out_channel)
+            nn.BatchNorm2d(out_channel),
         )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
