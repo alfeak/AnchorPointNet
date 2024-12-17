@@ -97,6 +97,7 @@ class PointNorm(nn.Module):
         self.gamma = nn.Parameter(torch.ones(knn,in_channel))
         self.beta = nn.Parameter(torch.zeros(knn,in_channel))
         self.eps = 1e-6
+        self.tanh = nn.Tanh()
     def forward(self,x):
         B,N,K,D = x.shape
         anchor_points = x[:,:,0,:].unsqueeze(-2) #[b,n,1,d]
@@ -104,8 +105,9 @@ class PointNorm(nn.Module):
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
         x = self.gamma * x + self.beta
-        x = x + anchor_points
+        x = self.tanh(x) + anchor_points
         return x
+    
 
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
@@ -116,10 +118,11 @@ class PointConv(nn.Module):
         self.in_channel = in_channel
         self.out_channel = out_channel
         self.norm = PointNorm(knn,in_channel)
-        self.conv = nn.Conv1d(in_channel,out_channel,kernel_size=1)
-        self.pn = PointNorm(knn,out_channel)
-        self.bn = nn.BatchNorm1d(out_channel)
-
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channel,out_channel,kernel_size=1),
+            nn.MaxPool2d((1,knn)),
+            nn.BatchNorm2d(out_channel),
+        )
         if in_channel == out_channel:
             self.identity = nn.Sequential()
         else:
@@ -138,16 +141,14 @@ class PointConv(nn.Module):
         sampled_xyz = index_points(xyz, fps_idx)
         sampled_points = index_points(points.permute(0,2,1), fps_idx).permute(0,2,1)
 
-        points = self.conv(points)
         idx = knn_point(self.knn, xyz, sampled_xyz)
         grouped_points = index_points(points.permute(0,2,1), idx)
-        grouped_points = self.pn(grouped_points)
-        grouped_points = torch.max(grouped_points, dim=-2, keepdim=False)[0]
-        grouped_points = self.bn(grouped_points.permute(0,2,1))
+        grouped_points = self.norm(grouped_points)
+        grouped_points = grouped_points.permute(0,3,1,2)
+        grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = self.relu(grouped_points + self.identity(sampled_points))
         
         return (new_points,sampled_xyz)
-        
 
 if __name__ == "__main__":
     pass
