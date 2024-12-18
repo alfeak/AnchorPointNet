@@ -108,7 +108,6 @@ class PointNorm(nn.Module):
         x = self.tanh(x) + anchor_points
         return x
     
-
 class PointConv(nn.Module):
     def __init__(self,in_channel,out_channel,knn=1,stride=1,dilation=1):
         super(PointConv,self).__init__()
@@ -130,6 +129,12 @@ class PointConv(nn.Module):
                 nn.Conv1d(in_channel,out_channel,kernel_size=1),
                 nn.BatchNorm1d(out_channel),
           )
+        self.norm1 = PointNorm(knn,out_channel)
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(out_channel,out_channel,kernel_size=1),
+            nn.MaxPool2d((1,knn)),
+            nn.BatchNorm2d(out_channel),
+        )
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self,x):
@@ -148,6 +153,12 @@ class PointConv(nn.Module):
         grouped_points = self.conv(grouped_points).squeeze(-1)
         new_points = self.relu(grouped_points + self.identity(sampled_points))
         
+        idx = knn_point(self.knn, sampled_xyz, sampled_xyz)
+        grouped_points = index_points(new_points.permute(0,2,1), idx)
+        grouped_points = self.norm1(grouped_points)
+        grouped_points = grouped_points.permute(0,3,1,2)
+        grouped_points = self.conv1(grouped_points).squeeze(-1)
+        new_points = self.relu(grouped_points + new_points)
         return (new_points,sampled_xyz)
 
 if __name__ == "__main__":
