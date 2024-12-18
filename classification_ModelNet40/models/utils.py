@@ -104,7 +104,8 @@ class PointNorm(nn.Module):
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
         x = self.gamma * x + self.beta
-        x = self.tanh(x) + anchor_points
+        # x = self.tanh(x) + anchor_points
+        x = x + anchor_points
         return x
     
 class PointConv(nn.Module):
