@@ -8,7 +8,7 @@ class PointAnchorNet(nn.Module):
         knn = knn
         dilation = dilation
         self.convlayer = nn.Sequential(
-          PointConv(3,64,24,2,dilation),
+          PointConv(3,64,knn,2,dilation),
           PointConv(64,128,knn,2,dilation),
           PointConv(128,256,knn,2,dilation),
           PointConv(256,512,knn,2,dilation),
