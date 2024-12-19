@@ -103,8 +103,7 @@ class PointNorm(nn.Module):
         std = torch.std((x-anchor_points).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
-        x = self.gamma * x + self.beta
-        # x = self.tanh(x) + anchor_points
+        x = self.gamma * self.tanh(x) + self.beta
         x = x + anchor_points
         return x
     
