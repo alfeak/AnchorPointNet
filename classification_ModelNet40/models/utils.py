@@ -90,11 +90,11 @@ def sort_sample(points, stride):
     return idx
 
 class PointNorm(nn.Module):
-    def __init__(self,in_channel):
+    def __init__(self,knn,in_channel):
         super(PointNorm,self).__init__()
         self.in_channel = in_channel
-        self.gamma = nn.Parameter(torch.ones(in_channel))
-        self.beta = nn.Parameter(torch.zeros(in_channel))
+        self.gamma = nn.Parameter(torch.ones(knn,in_channel))
+        self.beta = nn.Parameter(torch.zeros(knn,in_channel))
         self.eps = 1e-6
         self.tanh = nn.Tanh()
     def forward(self,x):
@@ -103,7 +103,7 @@ class PointNorm(nn.Module):
         std = torch.std((x-anchor_points).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
         std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
         x = (x-anchor_points)/(std+self.eps)
-        x = self.gamma * self.tanh(x) + self.beta
+        x = self.gamma * x + self.beta
         x = x + anchor_points
         return x
     
@@ -115,7 +115,7 @@ class PointConv(nn.Module):
         self.dilation = dilation
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.norm = PointNorm(in_channel)
+        self.norm = PointNorm(knn,in_channel)
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel,out_channel,kernel_size=1),
             nn.MaxPool2d((1,knn)),
