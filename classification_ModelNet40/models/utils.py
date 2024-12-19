@@ -95,17 +95,18 @@ class PointNorm(nn.Module):
         # self.in_channel = in_channel
         # self.gamma = nn.Parameter(torch.ones(knn,in_channel))
         # self.beta = nn.Parameter(torch.zeros(knn,in_channel))
-        # self.eps = 1e-6
+        self.eps = 1e-6
         self.tanh = nn.Tanh()
     def forward(self,x):
         B,N,K,D = x.shape
         anchor_points = x[:,:,0,:].unsqueeze(-2) #[b,n,1,d]
-        # std = torch.std((x-anchor_points).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
-        # std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
-        # x = (x-anchor_points)/(std+self.eps)
+        std = torch.std((x-anchor_points).reshape(B,N,K*D),dim=-1,unbiased=False) #[b,n]
+        std = std.unsqueeze(-1).unsqueeze(-1) #[b,n,1,1]
+        x = (x-anchor_points)/(std+self.eps)
+        x = self.tanh(x) + anchor_points
         # x = self.gamma * x + self.beta
         # x = x + anchor_points
-        x = self.tanh(x-anchor_points) + anchor_points
+        # x = self.tanh(x-anchor_points) + anchor_points
         return x
     
 class PointConv(nn.Module):
