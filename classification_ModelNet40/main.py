@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument('--epoch', default=300, type=int, help='number of epoch in training')
     parser.add_argument('--num_points', type=int, default=1024, help='Point Number')
     parser.add_argument('--learning_rate', default=0.1, type=float, help='learning rate in training')
-    parser.add_argument('--min_lr', default=0.005, type=float, help='min lr')
+    parser.add_argument('--min_lr', default=0.001, type=float, help='min lr')
     parser.add_argument('--weight_decay', type=float, default=2e-4, help='decay rate')
     parser.add_argument('--seed', type=int, help='random seed')
     parser.add_argument('--workers', default=8, type=int, help='workers')
