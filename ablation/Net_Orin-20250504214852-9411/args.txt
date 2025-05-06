@@ -1,0 +1,11 @@
+checkpoint:	 checkpoints/Net_Orin-20250504214852-9411
+msg:	 None
+batch_size:	 32
+model:	 Net_Orin
+epoch:	 300
+num_points:	 1024
+learning_rate:	 0.1
+min_lr:	 0.001
+weight_decay:	 0.0002
+seed:	 9411
+workers:	 8

@@ -1,0 +1,11 @@
+checkpoint:	 checkpoints/Net_maxpoolConn-20250505180122-878
+msg:	 None
+batch_size:	 32
+model:	 Net_maxpoolConn
+epoch:	 300
+num_points:	 1024
+learning_rate:	 0.1
+min_lr:	 0.001
+weight_decay:	 0.0002
+seed:	 878
+workers:	 8

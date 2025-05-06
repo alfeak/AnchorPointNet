@@ -1,0 +1,11 @@
+checkpoint:	 checkpoints/Net_prenorm-20250506085759-5535
+msg:	 None
+batch_size:	 32
+model:	 Net_prenorm
+epoch:	 300
+num_points:	 1024
+learning_rate:	 0.1
+min_lr:	 0.001
+weight_decay:	 0.0002
+seed:	 5535
+workers:	 8

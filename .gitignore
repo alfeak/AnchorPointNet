@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 .DS_Store
 
-classification_ModelNet40/date/
+classification_ModelNet40/data
 classification_ModelNet40/checkpoints

@@ -14,12 +14,10 @@ class PointPreNorm(nn.Module):
         
     def forward(self, points):
         anchor = points[:,:,:,0].unsqueeze(-1)
-        points = points - anchor
-        mean = torch.mean(points,dim=1,keepdim=True)
-        std = torch.std(points, dim=1, keepdim=True, unbiased=False)
-        points = (points - mean) / (std + self.eps)
+        std = torch.std(points - anchor, dim=1, keepdim=True, unbiased=False)
+        points = (points - anchor) / (std + self.eps)
 
-        return points * self.alpha + self.beta + anchor
+        return points * self.alpha + self.beta
 
 def square_distance(src, dst):
     """
@@ -89,20 +87,20 @@ class SetConv(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels,out_channels,1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels,out_channels,1),
-            nn.BatchNorm2d(out_channels),
+            # nn.ReLU(inplace=True),
+            # nn.Conv2d(out_channels,out_channels,1),
+            # nn.BatchNorm2d(out_channels),
             # nn.ReLU(inplace=True),
         )
         self.conv1 = nn.Sequential(
             nn.Conv2d(out_channels,out_channels,1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels,out_channels,1),
-            nn.BatchNorm2d(out_channels),
+            # nn.ReLU(inplace=True),
+            # nn.Conv2d(out_channels,out_channels,1),
+            # nn.BatchNorm2d(out_channels),
             # nn.ReLU(inplace=True),
             maxpool(nsample),
-        ) if skip_conn else nn.Identity()
+        )
 
         self.act = nn.ReLU(inplace=True)
         self.maxpool = maxpool(nsample)
@@ -113,7 +111,7 @@ class SetConv(nn.Module):
         if self.skip_conn:
             features = self.act(self.conv1(features) + self.maxpool(features))
         else:
-            features = self.maxpool(self.act(features))
+            features = self.act(self.conv1(self.act(features)))
         return features
 
 class PointConv(nn.Module):
@@ -133,9 +131,6 @@ class PointConv(nn.Module):
         )
         self.skip_conv = nn.Sequential(
             nn.Conv1d(in_channels,out_channels,1),
-            nn.BatchNorm1d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(out_channels,out_channels,1),
             nn.BatchNorm1d(out_channels),
         ) if in_channels!=out_channels else nn.Identity()
 

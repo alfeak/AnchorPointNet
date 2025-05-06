@@ -1,0 +1,11 @@
+checkpoint:	 checkpoints/Net-20250506031004-6135
+msg:	 None
+batch_size:	 32
+model:	 Net
+epoch:	 300
+num_points:	 1024
+learning_rate:	 0.1
+min_lr:	 0.001
+weight_decay:	 0.0002
+seed:	 6135
+workers:	 8
